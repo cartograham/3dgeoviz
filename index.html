@@ -149,7 +149,7 @@
     </select>
   </div>
 
-  <div class="row" data-for="points splat">
+  <div class="row" id="density-row">
     <label for="density">Capture density</label><output id="density-out"></output>
     <input type="range" id="density" min="1" max="100" step="1" value="15">
   </div>
@@ -160,6 +160,7 @@
   </div>
 
   <div class="group-title" data-for="mesh">Mesh</div>
+  <label class="check" data-for="mesh"><input type="checkbox" id="linkMesh" checked> Link mesh detail to capture density</label>
   <div class="row" data-for="mesh">
     <label for="meshDetail">Mesh detail</label><output id="meshDetail-out"></output>
     <input type="range" id="meshDetail" min="10" max="100" step="5" value="50">
@@ -177,7 +178,12 @@
   <div class="group-title" data-for="points">Point cloud</div>
   <div class="row" data-for="points">
     <label for="pointSize">Point size</label><output id="pointSize-out"></output>
-    <input type="range" id="pointSize" min="1" max="8" step="0.5" value="2.5">
+    <input type="range" id="pointSize" min="1" max="8" step="0.5" value="1.5">
+  </div>
+  <label class="check" data-for="points"><input type="checkbox" id="autoPoint" checked> Shrink points as density rises</label>
+  <div class="row" id="gaps-row">
+    <label for="gaps">Capture gaps</label><output id="gaps-out"></output>
+    <input type="range" id="gaps" min="0" max="100" step="5" value="60">
   </div>
 
   <div class="group-title" data-for="splat">Gaussian splat</div>
@@ -238,6 +244,8 @@
   /* with baked lighting in vertex colors (this stands in for "captured  */
   /* color", which has lighting baked in by the camera).                 */
   /* ------------------------------------------------------------------ */
+  // Surface kinds (used to give each part of a scene its own photographic detail and gloss)
+  const K = { BODY:1, LEAF:2, ROAD:3, GRASS:4, PAINT_W:5, PAINT_Y:6, RAIL:7, POST:8, SIGNPOST:9, SIGN:10, MARK:11, POLE:12, ARM:13, LAMP:14, CONE:15 };
   const LIGHT = new THREE.Vector3(0.45, 0.85, 0.35).normalize();
   function shade(nx,ny,nz,two){
     let l = nx*LIGHT.x + ny*LIGHT.y + nz*LIGHT.z;
@@ -247,7 +255,7 @@
   }
 
   class Builder {
-    constructor(){ this.pos=[]; this.nor=[]; this.col=[]; this.tw=[]; this.tr=[]; }
+    constructor(){ this.pos=[]; this.nor=[]; this.col=[]; this.tw=[]; this.tr=[]; this.tk=[]; this.tm=[]; }
     add(geo, opt = {}){
       if (!geo.attributes.normal) geo.computeVertexNormals();
       const g = geo.index ? geo.toNonIndexed() : geo;
@@ -266,7 +274,7 @@
         this.col.push(Math.min(1,c[0]*s), Math.min(1,c[1]*s), Math.min(1,c[2]*s));
       }
       const w = opt.weight || 1;
-      for (let t=0;t<n/3;t++){ this.tw.push(w); this.tr.push(opt.rough||0); }
+      for (let t=0;t<n/3;t++){ this.tw.push(w); this.tr.push(opt.rough||0); this.tk.push(opt.kind||0); this.tm.push(opt.spec||0); }
     }
     finish(){
       const pos=new Float32Array(this.pos);
@@ -274,13 +282,13 @@
       for (let i=0;i<pos.length;i+=3) for (let k=0;k<3;k++){ if(pos[i+k]<mn[k])mn[k]=pos[i+k]; if(pos[i+k]>mx[k])mx[k]=pos[i+k]; }
       const center=[(mn[0]+mx[0])/2,(mn[1]+mx[1])/2,(mn[2]+mx[2])/2];
       const radius=0.5*Math.hypot(mx[0]-mn[0],mx[1]-mn[1],mx[2]-mn[2]);
-      return { pos, nor:new Float32Array(this.nor), col:new Float32Array(this.col), tw:new Float32Array(this.tw), tr:new Float32Array(this.tr), center, radius };
+      return { pos, nor:new Float32Array(this.nor), col:new Float32Array(this.col), tw:new Float32Array(this.tw), tr:new Float32Array(this.tr), tk:new Uint8Array(this.tk), tm:new Float32Array(this.tm), center, radius };
     }
   }
 
   const xform = (x,y,z,rx=0,ry=0,rz=0) => new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(rx,ry,rz)).setPosition(x,y,z);
-  const box = (B,w,h,d,x,y,z,color,weight=1,rot=[0,0,0]) =>
-    B.add(new THREE.BoxGeometry(w,h,d), { matrix:xform(x,y,z,...rot), color, weight });
+  const box = (B,w,h,d,x,y,z,color,weight=1,rot=[0,0,0],extra={}) =>
+    B.add(new THREE.BoxGeometry(w,h,d), Object.assign({ matrix:xform(x,y,z,...rot), color, weight }, extra));
 
   /* ------------------------------------------------------------------ */
   /* Scene 1: procedural pineapple                                       */
@@ -321,7 +329,7 @@
     body.setAttribute('position',new THREE.BufferAttribute(pos,3));
     body.setAttribute('color',new THREE.BufferAttribute(col,3));
     body.computeVertexNormals();
-    B.add(body);
+    B.add(body,{kind:K.BODY, spec:0.35});
 
     // Crown: three tiers of curved, tapered leaf ribbons
     const rng = mulberry32(7);
@@ -374,7 +382,7 @@
         g.setAttribute('position',new THREE.Float32BufferAttribute(gp,3));
         g.setAttribute('color',new THREE.Float32BufferAttribute(gc,3));
         g.computeVertexNormals();
-        B.add(g,{twoSided:true, weight:Math.pow(0.01,R), rough:R*0.07});
+        B.add(g,{twoSided:true, weight:Math.pow(0.01,R), rough:R*0.07, kind:K.LEAF, spec:0.25});
       }
     });
     return B.finish();
@@ -390,7 +398,7 @@
     const rad=Math.max(6,Math.round(12*res));
 
     const road=new THREE.PlaneGeometry(6,12,seg,seg*2); road.rotateX(-Math.PI/2);
-    B.add(road,{colorFn:(x,y,z)=>{
+    B.add(road,{kind:K.ROAD, spec:0.05, colorFn:(x,y,z)=>{
       const n=0.80+0.26*vnoise(x*2.5+10,z*2.5)+0.16*vnoise(x*9,z*9);
       return scale3(asphalt,n);
     }});
@@ -405,38 +413,124 @@
         p.setY(i, edge*0.18*(vnoise(x*1.3,z*1.3)-0.35));
       }
       g.computeVertexNormals();
-      B.add(g,{weight:0.6,colorFn:(x,y,z)=>{
+      B.add(g,{weight:0.6, kind:K.GRASS, spec:0, colorFn:(x,y,z)=>{
         const n=0.75+0.5*vnoise(x*2.2,z*2.2+4)+0.15*vnoise(x*8,z*8);
         return mix(scale3(grass,n),hex(0x7a6a44),0.25*vnoise(x*0.8,z*0.8+9));
       }});
     });
 
     // Lane markings
-    [-2.75,2.75].forEach(x=>box(B,0.15,0.012,12,x,0.008,0,hex(0xe8e8e0),3));
-    for (let z=-5;z<=5;z+=3) box(B,0.14,0.012,1.5,0,0.008,z,hex(0xe9b824),3);
+    [-2.75,2.75].forEach(x=>box(B,0.15,0.012,12,x,0.008,0,hex(0xe8e8e0),3,[0,0,0],{kind:K.PAINT_W,spec:0.08}));
+    for (let z=-5;z<=5;z+=3) box(B,0.14,0.012,1.5,0,0.008,z,hex(0xe9b824),3,[0,0,0],{kind:K.PAINT_Y,spec:0.08});
 
     // W-beam guardrail on the right
-    for (let z=-5.5;z<=5.5;z+=2) box(B,0.14,0.75,0.12,3.7,0.375,z,hex(0x8a8f94),6);
-    box(B,0.07,0.32,12,3.62,0.58,0,hex(0xb9bec4),5);
+    for (let z=-5.5;z<=5.5;z+=2) box(B,0.14,0.75,0.12,3.7,0.375,z,hex(0x8a8f94),6,[0,0,0],{kind:K.POST,spec:0.5});
+    box(B,0.07,0.32,12,3.62,0.58,0,hex(0xb9bec4),5,[0,0,0],{kind:K.RAIL,spec:0.85});
 
     // Warning sign
-    B.add(new THREE.CylinderGeometry(0.04,0.04,2.6,rad),{matrix:xform(-3.9,1.3,1.5),color:hex(0x7b8087),weight:8});
-    box(B,0.95,0.95,0.03,-3.9,2.45,1.5,hex(0xf2c318),10,[0,0,Math.PI/4]);
-    box(B,0.12,0.42,0.02,-3.9,2.52,1.525,hex(0x1b1b1b),12);
-    box(B,0.12,0.12,0.02,-3.9,2.22,1.525,hex(0x1b1b1b),12);
+    B.add(new THREE.CylinderGeometry(0.04,0.04,2.6,rad),{matrix:xform(-3.9,1.3,1.5),color:hex(0x7b8087),weight:8,kind:K.SIGNPOST,spec:0.7});
+    box(B,0.95,0.95,0.03,-3.9,2.45,1.5,hex(0xf2c318),10,[0,0,Math.PI/4],{kind:K.SIGN,spec:0.7});
+    box(B,0.12,0.42,0.02,-3.9,2.52,1.525,hex(0x1b1b1b),12,[0,0,0],{kind:K.MARK,spec:0.3});
+    box(B,0.12,0.12,0.02,-3.9,2.22,1.525,hex(0x1b1b1b),12,[0,0,0],{kind:K.MARK,spec:0.3});
 
     // Light pole with arm and luminaire
-    B.add(new THREE.CylinderGeometry(0.04,0.08,7,rad),{matrix:xform(5.0,3.5,-2.5),color:hex(0x9ea4aa),weight:5});
-    B.add(new THREE.CylinderGeometry(0.035,0.035,2.2,Math.max(6,Math.round(8*res))),{matrix:xform(3.9,6.9,-2.5,0,0,Math.PI/2),color:hex(0x9ea4aa),weight:5});
-    box(B,0.7,0.1,0.28,2.9,6.85,-2.5,hex(0x30343a),6);
-    box(B,0.5,0.02,0.2,2.9,6.79,-2.5,hex(0xfff1c0),6);
+    B.add(new THREE.CylinderGeometry(0.04,0.08,7,rad),{matrix:xform(5.0,3.5,-2.5),color:hex(0x9ea4aa),weight:5,kind:K.POLE,spec:0.75});
+    B.add(new THREE.CylinderGeometry(0.035,0.035,2.2,Math.max(6,Math.round(8*res))),{matrix:xform(3.9,6.9,-2.5,0,0,Math.PI/2),color:hex(0x9ea4aa),weight:5,kind:K.ARM,spec:0.75});
+    box(B,0.7,0.1,0.28,2.9,6.85,-2.5,hex(0x30343a),6,[0,0,0],{kind:K.LAMP,spec:0.4});
+    box(B,0.5,0.02,0.2,2.9,6.79,-2.5,hex(0xfff1c0),6,[0,0,0],{kind:K.LAMP,spec:0});
 
     // Traffic cones
     [-3.5,-2.5,-1.5].forEach(z=>{
-      B.add(new THREE.ConeGeometry(0.15,0.6,rad),{matrix:xform(2.4,0.3,z),color:hex(0xf0661a),weight:10});
+      B.add(new THREE.ConeGeometry(0.15,0.6,rad),{matrix:xform(2.4,0.3,z),color:hex(0xf0661a),weight:10,kind:K.CONE,spec:0.35});
     });
     return B.finish();
   }
+
+  /* ------------------------------------------------------------------ */
+  /* Photographic detail for splats. Real splats are trained from photos, */
+  /* so they carry fine texture, cast shadows, and shine; these functions */
+  /* stand in for that. Points and mesh keep their original colors.       */
+  /* ------------------------------------------------------------------ */
+  const PA = { gold:hex(0xe3a425), groove:hex(0x6b4a14), eye:hex(0x8a4b12), olive:hex(0x8aa032) };
+  function pineappleAlbedoAt(v,u){
+    const h=0.5+0.25*(Math.cos(9*v+20*u)+Math.cos(9*v-20*u));
+    const bump=Math.min(1,Math.sin(Math.PI*u)/0.15);
+    let c=mix(PA.groove,PA.gold,smooth(0.15,0.65,h));
+    c=mix(c,PA.eye,smooth(0.82,0.97,h)*0.8*bump);
+    c=mix(c,PA.olive,smooth(0.80,1.0,u)*0.6);
+    return { c:scale3(c,0.85+0.15*smooth(0,0.3,u)), h };
+  }
+
+  function pineappleDetail(x,y,z,nx,ny,nz,kind,r,g,b,rng){
+    if (kind===K.BODY){
+      let v=Math.atan2(z,x); if (v<0) v+=2*Math.PI;
+      const u=Math.min(1,Math.max(0,y/2.3+0.5));
+      const A=pineappleAlbedoAt(v,u);                       // crisp eyes straight from the surface, not from coarse vertex colors
+      const s=shade(nx,ny,nz,false);
+      const ao=0.70+0.30*smooth(0.05,0.65,A.h);             // grooves sit in shade
+      const mott=0.86+0.28*vnoise(x*7+z*5,y*9+x*4);         // blotchy ripeness
+      const sp=0.97+0.06*vnoise(x*24+z*17,y*24+x*9);        // fine skin texture, coherent so neighbors blend
+      return [Math.min(1,A.c[0]*s*ao*mott*sp), Math.min(1,A.c[1]*s*ao*mott*sp), Math.min(1,A.c[2]*s*ao*mott*sp)];
+    }
+    const n=0.80+0.40*vnoise(x*9+z*3,y*7+z*9);               // leaf: streaky variation
+    const sp=0.97+0.06*vnoise(x*30+z*11,y*30+z*21);
+    return [Math.min(1,r*n*sp), Math.min(1,g*n*sp), Math.min(1,b*n*sp)];
+  }
+
+  // Cast shadows on the ground: [ax, az, bx, bz, width at base, width at tip, strength]
+  // Light comes from (0.45, 0.85, 0.35), so a point at height h shadows ground offset (-0.53h, -0.41h).
+  const SHADOWS = [
+    [5.0,-2.5, 1.29,-5.38, 0.10,0.28,0.55],     // light pole
+    [1.34,-5.33, -0.76,-5.33, 0.09,0.18,0.45],  // arm
+    [3.31,-6.2, 3.31,5.8, 0.16,0.20,0.45],      // guardrail beam
+    [-3.9,1.5, -5.28,0.43, 0.07,0.14,0.50],     // sign post
+    [-5.1,0.60, -5.3,0.45, 0.50,0.55,0.50]      // sign plate
+  ];
+  for (let z=-5.5;z<=5.5;z+=2) SHADOWS.push([3.7,z, 3.3,z-0.31, 0.07,0.12,0.45]);     // guardrail posts
+  [-3.5,-2.5,-1.5].forEach(z=>SHADOWS.push([2.4,z, 2.08,z-0.25, 0.10,0.14,0.50]));    // cones
+  function groundShadow(x,z){
+    let lit=1;
+    for (const s of SHADOWS){
+      const dx=s[2]-s[0], dz=s[3]-s[1], L2=dx*dx+dz*dz||1e-9;
+      const t=Math.max(0,Math.min(1,((x-s[0])*dx+(z-s[1])*dz)/L2));
+      const d=Math.hypot(x-(s[0]+dx*t), z-(s[1]+dz*t));
+      const w=s[4]+(s[5]-s[4])*t;                           // penumbra widens with distance from the caster
+      lit*=1-s[6]*(1-smooth(w*0.55,w*1.5,d));
+    }
+    return lit;
+  }
+
+  function roadsideDetail(x,y,z,nx,ny,nz,kind,r,g,b,rng){
+    const sp=0.97+0.06*vnoise(x*22+z*13,y*22+z*31);
+    let col=[r,g,b], f=sp;
+    switch(kind){
+      case K.ROAD: {
+        const fine=0.90+0.20*vnoise(x*38,z*38);                                   // aggregate texture
+        const fleck=rng()>0.997 ? 1.3 : 1;
+        const track=Math.exp(-Math.pow(Math.abs(x)-0.95,2)/0.1);                  // polished wheel paths
+        const seam=Math.min(1,Math.exp(-Math.pow(z-2.2,2)/0.004)+Math.exp(-Math.pow(z+3.1,2)/0.004)); // tar seams
+        const patch=smooth(0.62,0.70,vnoise(x*0.9+30,z*0.9+8))*0.18;              // patched asphalt
+        f=sp*fine*fleck*(1-0.12*track)*(1-0.30*seam)*(1-patch);
+        break; }
+      case K.GRASS: {
+        const blade=0.70+0.60*vnoise(x*30,z*30);
+        const dry=smooth(0.45,0.80,vnoise(x*0.8+2,z*0.8));
+        col=mix(col,[0.55,0.50,0.30],dry*0.35); f=blade*sp;
+        break; }
+      case K.PAINT_W: case K.PAINT_Y: {
+        const wear=0.70+0.30*vnoise(x*10,z*10);
+        const chip=vnoise(x*24+9,z*24)<0.28 ? 0.55 : 1;                           // chipped paint
+        f=sp*wear*chip;
+        break; }
+      case K.RAIL: f=(0.88+0.24*vnoise(z*2.5,y*18))*sp; break;
+      case K.POST: col=mix(col,[0.45,0.28,0.18],0.30*vnoise(y*10,z*3)); f=sp; break; // rust
+      default: f=sp;
+    }
+    if (kind===K.ROAD || kind===K.GRASS || kind===K.PAINT_W || kind===K.PAINT_Y) f*=groundShadow(x,z);
+    return [Math.min(1,col[0]*f), Math.min(1,col[1]*f), Math.min(1,col[2]*f)];
+  }
+
+  const DETAIL = { pineapple:pineappleDetail, roadside:roadsideDetail };
 
   const BUILDERS = { pineapple: buildPineapple, roadside: buildRoadside };
   const CAMERA_DEFAULTS = { pineapple:{theta:0.6,phi:1.38}, roadside:{theta:0.75,phi:1.2}, loaded:{theta:0.6,phi:0.95} };
@@ -445,9 +539,9 @@
   /* "Capture": area-weighted surface sampling from the reference model  */
   /* ------------------------------------------------------------------ */
   const MAXN = 100000;
-  const STRIDE = 16; // cx cy cz | Ax Ay Az | Bx By Bz | Cx Cy Cz | r g b a
+  const STRIDE = 17; // cx cy cz | Ax Ay Az | Bx By Bz | Cx Cy Cz | r g b a | gloss
 
-  function sampleSurface(src, N, seed){
+  function sampleSurface(src, N, seed, detail){
     const rng=mulberry32(seed), T=src.tw.length, P=src.pos, NR=src.nor, CL=src.col;
     const cdf=new Float64Array(T); let total=0;
     for (let t=0;t<T;t++){
@@ -472,6 +566,8 @@
       const cr=wa*CL[o]+wb*CL[o+3]+wc*CL[o+6], cg=wa*CL[o+1]+wb*CL[o+4]+wc*CL[o+7], cb=wa*CL[o+2]+wb*CL[o+5]+wc*CL[o+8];
       pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
       col[i*3]=cr; col[i*3+1]=cg; col[i*3+2]=cb;
+      const spec=src.tm[lo];
+      const sc=detail ? detail(x,y,z,nx,ny,nz,src.tk[lo],cr,cg,cb,rng) : [cr,cg,cb];
 
       // Tangent frame, randomly rotated around the normal
       let tx,ty,tz;
@@ -483,13 +579,13 @@
       const t2x=-tx*sa+bx*ca, t2y=-ty*sa+by*ca, t2z=-tz*sa+bz*ca;
 
       const spacing=Math.sqrt(total/(N*src.tw[lo]));
-      const s1=spacing*0.62*(0.85+0.3*rng()), s2=spacing*0.62*(0.85+0.3*rng()), s3=spacing*0.07;
+      const s1=spacing*0.85*(0.9+0.2*rng()), s2=spacing*0.85*(0.9+0.2*rng()), s3=spacing*0.07;
       const q=i*STRIDE;
       splat[q]=x; splat[q+1]=y; splat[q+2]=z;
       splat[q+3]=t1x*s1; splat[q+4]=t1y*s1; splat[q+5]=t1z*s1;
       splat[q+6]=t2x*s2; splat[q+7]=t2y*s2; splat[q+8]=t2z*s2;
       splat[q+9]=nx*s3;  splat[q+10]=ny*s3; splat[q+11]=nz*s3;
-      splat[q+12]=cr; splat[q+13]=cg; splat[q+14]=cb; splat[q+15]=0.9;
+      splat[q+12]=sc[0]; splat[q+13]=sc[1]; splat[q+14]=sc[2]; splat[q+15]=0.96; splat[q+16]=spec;
     }
     return { N, pos, col, splat };
   }
@@ -517,14 +613,25 @@
 
   // Points: constant-pixel round dots
   const pointMat = new THREE.ShaderMaterial({
-    uniforms:{ uSize:{value:2.5}, uPR:{value:1}, uNoise:{value:0} },
+    uniforms:{ uSize:{value:2.5}, uPR:{value:1}, uNoise:{value:0}, uGaps:{value:0}, uGapFreq:{value:1} },
     vertexShader: `
       attribute vec3 aCol; uniform float uSize; uniform float uPR; uniform float uNoise;
+      uniform float uGaps; uniform float uGapFreq;
       varying vec3 vCol;
       ${NOISE_GLSL}
+      float vn3(vec3 p){
+        vec3 i = floor(p); vec3 f = fract(p); f = f*f*(3.0 - 2.0*f);
+        float a = hash3(i).x,                    b = hash3(i + vec3(1.0,0.0,0.0)).x;
+        float c = hash3(i + vec3(0.0,1.0,0.0)).x, d = hash3(i + vec3(1.0,1.0,0.0)).x;
+        float e = hash3(i + vec3(0.0,0.0,1.0)).x, g = hash3(i + vec3(1.0,0.0,1.0)).x;
+        float h = hash3(i + vec3(0.0,1.0,1.0)).x, k = hash3(i + vec3(1.0,1.0,1.0)).x;
+        return mix(mix(mix(a,b,f.x), mix(c,d,f.x), f.y), mix(mix(e,g,f.x), mix(h,k,f.x), f.y), f.z);
+      }
       void main(){
-        vec3 p = position + (hash3(position) - 0.5) * 2.0 * uNoise;
         vCol = aCol;
+        // Missing returns: whole patches drop out (occlusion, dark or shiny surfaces), so gaps stay open as density rises
+        if (vn3(position * uGapFreq) < uGaps * 0.55) { gl_Position = vec4(2.0,2.0,2.0,1.0); gl_PointSize = 0.0; return; }
+        vec3 p = position + (hash3(position) - 0.5) * 2.0 * uNoise;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(p,1.0);
         gl_PointSize = uSize * uPR;
       }`,
@@ -603,8 +710,21 @@
     transparent:true, depthTest:false, depthWrite:false,
     vertexShader: `
       attribute vec3 aCenter; attribute vec3 aA; attribute vec3 aB; attribute vec3 aC; attribute vec4 aColor;
+      attribute float aSpec;
       ${SPLAT_DECL}
-      void main(){ project(aCenter, aA, aB, aC, aColor); }`,
+      void main(){
+        // View-dependent color, like the spherical-harmonic terms in a trained splat: a sun glint plus a grazing-angle sheen
+        vec3 V = normalize(cameraPosition - aCenter);
+        vec3 N = normalize(aC);
+        float nv = dot(N, V);
+        if (nv < 0.0) N = -N;
+        nv = abs(nv);
+        vec3 H = normalize(normalize(vec3(0.45,0.85,0.35)) + V);
+        float glint = pow(max(dot(N, H), 0.0), 28.0) * aSpec;
+        float sheen = pow(1.0 - nv, 3.0) * aSpec * 0.18;
+        vec3 col = aColor.rgb + vec3(1.0,0.96,0.86) * glint * 1.1 + vec3(0.9,0.95,1.0) * sheen;
+        project(aCenter, aA, aB, aC, vec4(col, aColor.a));
+      }`,
     fragmentShader: SPLAT_FRAG
   });
 
@@ -650,7 +770,7 @@
   /* App state                                                           */
   /* ------------------------------------------------------------------ */
   const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const S = { object:'pineapple', view:'compare', density:15, noise:0, rough:75, meshDetail:50, meshStyle:'edges', pointSize:2.5, splatSize:1, outlines:false, auto:!reduced };
+  const S = { object:'pineapple', view:'compare', density:15, noise:0, rough:75, linkMesh:true, meshDetail:50, meshStyle:'edges', pointSize:1.5, autoPoint:true, gaps:60, splatSize:1, outlines:false, auto:!reduced };
   let active = ['points','mesh','splat'];
   let full = null, samples = null, meshData = null, loaded = null;
   let liveSplat = null, order = null, depth = null, counts = new Uint32Array(65537);
@@ -658,6 +778,9 @@
   let dragging = false;
 
   const kSamples = () => { const n = loaded ? loaded.N : MAXN; return Math.max(100, Math.round(n * S.density / 100)); };
+  // Dot size is fixed in pixels, so a denser capture would eventually paint a solid surface.
+  // With auto-shrink on (demo scenes only), dots get smaller as density rises so they stay distinct.
+  const effPointSize = () => (S.autoPoint && !loaded) ? Math.max(1, S.pointSize*Math.min(1, Math.sqrt(15/S.density))) : S.pointSize;
   const noiseWorld = () => (S.noise/100) * (full ? (full.noiseBase !== undefined ? full.noiseBase : full.radius*0.03) : 1);
 
   /* ------------------------------------------------------------------ */
@@ -761,6 +884,7 @@
     splatGeo.setAttribute('aB',      new THREE.InterleavedBufferAttribute(splatBuf,3,6));
     splatGeo.setAttribute('aC',      new THREE.InterleavedBufferAttribute(splatBuf,3,9));
     splatGeo.setAttribute('aColor',  new THREE.InterleavedBufferAttribute(splatBuf,4,12));
+    splatGeo.setAttribute('aSpec',   new THREE.InterleavedBufferAttribute(splatBuf,1,16));
     splatGeo.instanceCount = kSamples();
     splatObj=new THREE.Mesh(splatGeo,splatMat); splatObj.frustumCulled=false;
     scenes.splat.add(splatObj);
@@ -777,7 +901,7 @@
 
   function regenerate(){
     full = BUILDERS[S.object](1);
-    samples = sampleSurface(full, MAXN, 1234);
+    samples = sampleSurface(full, MAXN, 1234, DETAIL[S.object]);
     rebuildSampleObjects();
     rebuildMeshData();
   }
@@ -814,7 +938,7 @@
       L[d]=M[s];     L[d+1]=M[s+1];   L[d+2]=M[s+2];   L[d+3]=M[s+3];
       L[d+4]=M[s+4]; L[d+5]=M[s+5];   L[d+6]=M[s+6];   L[d+7]=M[s+7];
       L[d+8]=M[s+8]; L[d+9]=M[s+9];   L[d+10]=M[s+10]; L[d+11]=M[s+11];
-      L[d+12]=M[s+12]; L[d+13]=M[s+13]; L[d+14]=M[s+14]; L[d+15]=M[s+15];
+      L[d+12]=M[s+12]; L[d+13]=M[s+13]; L[d+14]=M[s+14]; L[d+15]=M[s+15]; L[d+16]=M[s+16];
     }
     splatBuf.needsUpdate = true;
   }
@@ -1028,6 +1152,10 @@
     });
     document.querySelectorAll('[data-scene]').forEach(el=>{ el.hidden = !!loaded || el.dataset.scene !== S.object; });
     document.querySelectorAll('[data-loaded]').forEach(el=>{ el.hidden = !loaded; });
+    // Density drives points and splats. It also drives the mesh while the link is on, so keep it reachable in Mesh view.
+    $('density-row').hidden = !(active.includes('points') || active.includes('splat') || (S.linkMesh && !loaded && active.includes('mesh')));
+    $('linkMesh').closest('label').hidden = !!loaded || !active.includes('mesh');
+    $('gaps-row').hidden = !!loaded || !active.includes('points');
     document.querySelector('#seg-view [data-v="mesh"]').disabled = !!loaded;
     $('about').textContent = ABOUT[S.view];
   }
@@ -1050,8 +1178,9 @@
     $('density-out').textContent = fmt(k) + ' samples';
     $('noise-out').textContent = S.noise + '%';
     $('rough-out').textContent = S.rough + '%';
-    $('meshDetail-out').textContent = S.meshDetail + '%';
-    $('pointSize-out').textContent = S.pointSize + ' px';
+    $('meshDetail-out').textContent = S.meshDetail + '%' + (S.linkMesh && !loaded ? ' (linked)' : '');
+    $('gaps-out').textContent = S.gaps + '%';
+    $('pointSize-out').textContent = (S.autoPoint && !loaded) ? S.pointSize + ' px at 15% (now ' + effPointSize().toFixed(1) + ' px)' : S.pointSize + ' px';
     $('splatSize-out').textContent = S.splatSize.toFixed(2) + 'x';
   }
 
@@ -1073,7 +1202,22 @@
     S.rough=+e.target.value; updateStats();
     clearTimeout(roughTimer); roughTimer=setTimeout(regenerate,150);
   });
-  $('density').addEventListener('input', e=>{ S.density=+e.target.value; applyDensity(); });
+  // Triangle count scales with the square of the mesh's linear detail, so detail = sqrt(density)
+  // keeps triangle count in step with the sample count of the points and splats.
+  function syncMeshDetail(rebuild=true){
+    if (loaded) return;
+    S.meshDetail = Math.max(10, Math.min(100, Math.round(10*Math.sqrt(S.density))));
+    $('meshDetail').value = S.meshDetail;
+    updateStats();
+    if (rebuild){ clearTimeout(meshTimer); meshTimer=setTimeout(rebuildMeshData,120); }
+  }
+  $('density').addEventListener('input', e=>{ S.density=+e.target.value; applyDensity(); if (S.linkMesh) syncMeshDetail(); });
+  $('linkMesh').addEventListener('change', e=>{
+    S.linkMesh=e.target.checked;
+    $('meshDetail').disabled=S.linkMesh;
+    if (S.linkMesh) syncMeshDetail(); else updateStats();
+    applyVisibility();
+  });
   $('noise').addEventListener('input', e=>{ S.noise=+e.target.value; updateStats(); });
   $('meshDetail').addEventListener('input', e=>{
     S.meshDetail=+e.target.value; updateStats();
@@ -1081,6 +1225,8 @@
   });
   $('meshStyle').addEventListener('change', e=>{ S.meshStyle=e.target.value; rebuildMeshObjects(); });
   $('pointSize').addEventListener('input', e=>{ S.pointSize=+e.target.value; updateStats(); });
+  $('gaps').addEventListener('input', e=>{ S.gaps=+e.target.value; updateStats(); });
+  $('autoPoint').addEventListener('change', e=>{ S.autoPoint=e.target.checked; updateStats(); });
   $('splatSize').addEventListener('input', e=>{ S.splatSize=+e.target.value; updateStats(); });
   $('outlines').addEventListener('change', e=>{ S.outlines=e.target.checked; });
   $('auto').checked = S.auto;
@@ -1194,6 +1340,7 @@
     loaded=null;
     camera.near=0.05; camera.far=500;
     S.density=15; $('density').value=15;
+    if (S.linkMesh) syncMeshDetail(false);
     $('demo').hidden=true;
     $('status').textContent=DEFAULT_STATUS;
   }
@@ -1356,7 +1503,9 @@
 
     if (active.includes('splat')) { if (loaded) requestSortLoaded(); else maybeSort(); }
 
-    pointMat.uniforms.uSize.value = S.pointSize;
+    pointMat.uniforms.uSize.value = effPointSize();
+    pointMat.uniforms.uGaps.value = loaded ? 0 : S.gaps/100;
+    pointMat.uniforms.uGapFreq.value = 4/full.radius;
     pointMat.uniforms.uPR.value = pr;
     const nw = noiseWorld();
     pointMat.uniforms.uNoise.value = nw;
@@ -1392,6 +1541,8 @@
   /* ------------------------------------------------------------------ */
   resize();
   $('status').textContent = DEFAULT_STATUS;
+  $('meshDetail').disabled = S.linkMesh;
+  syncMeshDetail(false);
   buildPanels();
   applyVisibility();
   loadObject('pineapple');
