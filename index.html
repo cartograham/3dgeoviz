@@ -86,6 +86,33 @@
   .note.s .ic{color:#5fcf9a}
   .note.w{border-color:#f0a35e}
   .note.w .ic{color:#f0a35e}
+  .stage.matrix-open{touch-action:auto; cursor:auto}
+  .matrix{position:absolute; inset:0; z-index:5; background:#0b0e11; color:#cbd5dc; overflow:auto; padding:22px 26px 28px; cursor:auto}
+  .m-head{display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; margin-bottom:14px}
+  .m-head h2{margin:0; font-size:18px; color:#eef2f5; letter-spacing:-0.01em}
+  .m-head p{margin:3px 0 0; font-size:13px; color:#8f9ca7}
+  .btn-dark{font:inherit; font-size:13px; padding:7px 12px; border-radius:8px; cursor:pointer; color:#dfe6eb; background:#151b21; border:1px solid #36424d}
+  .btn-dark:hover{background:#1c242b}
+  .btn-dark:focus-visible{outline:2px solid #6aa9ff; outline-offset:2px}
+  .legend{display:flex; gap:18px; flex-wrap:wrap; margin:0 0 14px; font-size:12px; color:#9aa7b2}
+  .legend .b{font-weight:400; color:#9aa7b2}
+  .mx{border-collapse:separate; border-spacing:0; width:100%; min-width:920px; font-size:13px}
+  .mx th, .mx td{padding:10px 12px; text-align:left; vertical-align:top; border-bottom:1px solid #1d252c}
+  .mx thead th{position:sticky; top:0; z-index:2; background:#12171c; color:#eef2f5; font-size:14px}
+  .mx thead th small{display:block; margin-top:2px; font-size:12px; font-weight:400; color:#8f9ca7}
+  .mx thead th:first-child, .mx tbody th{position:sticky; left:0; background:#0b0e11}
+  .mx thead th:first-child{z-index:3; background:#12171c}
+  .mx tbody th{color:#eef2f5; font-weight:600; width:17%; min-width:150px}
+  .mx td{width:20.75%}
+  .mx tr.use td{color:#dbe3e9}
+  .b{display:inline-flex; align-items:center; gap:7px; font-weight:600; color:#eef2f5}
+  .b i{flex:0 0 11px; width:11px; height:11px; border-radius:50%; border:2px solid; box-sizing:border-box}
+  .b.good i{border-color:#5fcf9a; background:#5fcf9a}
+  .b.mid i{border-color:#e3c66a; background:linear-gradient(90deg,#e3c66a 50%,transparent 50%)}
+  .b.bad i{border-color:#f0a35e; background:transparent}
+  .n{margin-top:3px; font-size:12px; line-height:1.4; color:#8f9ca7}
+  .m-take{margin:20px 0 6px; font-size:16px; font-weight:600; color:#eef2f5}
+  .m-foot{margin:0; font-size:12px; color:#7f8c97; max-width:900px}
   .hud{position:absolute; right:16px; top:14px; text-align:right; font-size:12px; color:#6f7c87; pointer-events:none; line-height:1.5}
   .hud b{color:#aab6bf; font-weight:600; font-variant-numeric:tabular-nums}
   .err{position:absolute; inset:0; display:grid; place-items:center; color:#cbd5dc; padding:30px; text-align:center}
@@ -130,6 +157,10 @@
       <button type="button" data-v="compare" aria-pressed="true">Compare</button>
     </div>
   </fieldset>
+
+  <div style="margin:0 0 16px">
+    <button type="button" class="btn" id="matrixBtn" aria-pressed="false" style="width:100%">Show comparison matrix</button>
+  </div>
 
   <p class="about" id="about"></p>
 
@@ -204,6 +235,23 @@
   <canvas id="gl"></canvas>
   <div class="panels" id="panels"></div>
   <div class="hud"><b id="fps">--</b> fps<br>Drag to orbit, scroll to zoom, right-drag to pan</div>
+  <section class="matrix" id="matrix" hidden aria-label="Comparison matrix">
+    <div class="m-head">
+      <div>
+        <h2>How captured data is represented</h2>
+        <p>Key factors when choosing a reality modeling approach</p>
+      </div>
+      <button type="button" class="btn-dark" id="matrixClose">Back to 3D view</button>
+    </div>
+    <div class="legend">
+      <span class="b good"><i></i>Favorable</span>
+      <span class="b mid"><i></i>Moderate or varies</span>
+      <span class="b bad"><i></i>Limited</span>
+    </div>
+    <table class="mx" id="mx"></table>
+    <p class="m-take">Points measure. Meshes design. Splats show. Imagery documents.</p>
+    <p class="m-foot">These are judgment calls, not benchmarks. Imagery accuracy depends on camera calibration and range. "Emerging" for splats reflects glTF and 3D Tiles support that was still at release candidate in the sources checked. Imagery has no 3D scene in this app, so it appears only here.</p>
+  </section>
 </main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -776,6 +824,7 @@
   let liveSplat = null, order = null, depth = null, counts = new Uint32Array(65537);
   let lastFwd = new THREE.Vector3(9,9,9), lastK = -1, sortDirty = true;
   let dragging = false;
+  let matrixOpen = false;
 
   const kSamples = () => { const n = loaded ? loaded.N : MAXN; return Math.max(100, Math.round(n * S.density / 100)); };
   // Dot size is fixed in pixels, so a denser capture would eventually paint a solid surface.
@@ -995,6 +1044,7 @@
   let pinchPrev = 0;
   stage.addEventListener('contextmenu', e=>e.preventDefault());
   stage.addEventListener('pointerdown', e=>{
+    if (matrixOpen) return;
     if (e.target.closest && e.target.closest('.tog')) return;
     stage.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId,{x:e.clientX,y:e.clientY,button:e.button,shift:e.shiftKey});
@@ -1025,6 +1075,7 @@
   stage.addEventListener('pointercancel', endPointer);
   const clampRadius = r => full ? Math.min(full.radius*12, Math.max(full.minZoom !== undefined ? full.minZoom : full.radius*0.12, r)) : r;
   stage.addEventListener('wheel', e=>{
+    if (matrixOpen) return;
     e.preventDefault();
     cam.radius = clampRadius(cam.radius*Math.exp(e.deltaY*0.0012));
   }, { passive:false });
@@ -1480,6 +1531,110 @@
   ['dragleave','drop'].forEach(t=>stage.addEventListener(t,e=>{ e.preventDefault(); stage.classList.remove('drop'); }));
   stage.addEventListener('drop', e=>{ const f=e.dataTransfer.files[0]; if(f) loadPly(f); });
 
+  /* ------------------------------------------------------------------ */
+  /* Comparison matrix                                                   */
+  /* ------------------------------------------------------------------ */
+  const MX_COLS = [
+    ['Point cloud','Measured XYZ and color'],
+    ['Mesh','Connected triangles'],
+    ['Gaussian splat','Oriented 3D Gaussians'],
+    ['Imagery','Panoramic and street-level']
+  ];
+  // Each cell: [level, label, note]. Levels: good, mid, bad (or info for plain text)
+  const MX_ROWS = [
+    ['Measurement accuracy', [
+      ['good','Strong','Direct sensor measurements'],
+      ['mid','Moderate','Derived from points, smooths detail'],
+      ['bad','Weak','Built for viewing, not measuring'],
+      ['mid','Moderate','Measurable when calibrated, drops with distance']]],
+    ['Visual realism', [
+      ['bad','Weak','Colored dots'],
+      ['mid','Moderate','Baked texture, fixed as the angle changes'],
+      ['good','Strong','Photographic, view-dependent color'],
+      ['good','Strong','It is the photograph']]],
+    ['Free viewpoint navigation', [
+      ['good','Yes',''],
+      ['good','Yes',''],
+      ['mid','Yes, with limits','Quality drops far from the captured views'],
+      ['bad','No','Fixed to the capture path']]],
+    ['Thin features (wires, poles, foliage)', [
+      ['mid','Moderate','Captured if sensed, but sparse'],
+      ['bad','Weak','Smoothed or lost'],
+      ['good','Strong','Fine, fuzzy detail beats a mesh'],
+      ['good','Strong','Shown as seen']]],
+    ['Gaps and missing data', [
+      ['bad','Weak','See-through holes'],
+      ['mid','Moderate','Interpolated, can invent geometry'],
+      ['good','Strong','Fills in visually'],
+      ['mid','Moderate','No holes, but only visible where the camera drove']]],
+    ['File size', [
+      ['bad','Large',''],
+      ['good','Smallest',''],
+      ['mid','Large raw','Much smaller compressed'],
+      ['mid','Large in total','Light per view']]],
+    ['Streaming at scale', [
+      ['good','Mature',''],
+      ['good','Mature',''],
+      ['mid','Emerging',''],
+      ['good','Mature','']]],
+    ['Rendering demand', [
+      ['mid','Moderate',''],
+      ['good','Low',''],
+      ['bad','High','GPU depth sorting'],
+      ['good','Low','']]],
+    ['Effort to produce', [
+      ['good','Low','Direct from LiDAR'],
+      ['bad','High','Reconstruction and texturing'],
+      ['bad','High','GPU training'],
+      ['mid','Low per capture','Needs georeferencing']]],
+    ['Editing and classification', [
+      ['good','Strong',''],
+      ['good','Strong',''],
+      ['bad','Weak',''],
+      ['mid','Moderate','Strong for AI detection, little to edit']]],
+    ['GIS and CAD support', [
+      ['good','Strong',''],
+      ['good','Strong',''],
+      ['mid','Emerging','glTF and 3D Tiles support in progress'],
+      ['good','Strong','']]],
+    ['Use it when', [
+      ['info','','Surveying, as-builts, clearances, volumes'],
+      ['info','','Design context, simulation, general visualization'],
+      ['info','','Public engagement, asset documentation, photoreal context'],
+      ['info','','Inspection, asset inventory, desk-based review']], true]
+  ];
+
+  function renderMatrix(){
+    const ORDER = [3,0,1,2];   // Imagery first, then Point cloud, Mesh, Gaussian splat
+    let h = '<thead><tr><th scope="col">Factor</th>' +
+      ORDER.map(i=>`<th scope="col">${MX_COLS[i][0]}<small>${MX_COLS[i][1]}</small></th>`).join('') + '</tr></thead><tbody>';
+    MX_ROWS.forEach(r=>{
+      h += `<tr${r[2] ? ' class="use"' : ''}><th scope="row">${r[0]}</th>` + ORDER.map(i=>{
+        const c=r[1][i];
+        return c[0]==='info'
+          ? `<td>${c[2]}</td>`
+          : `<td><div class="b ${c[0]}"><i></i>${c[1]}</div>${c[2] ? `<div class="n">${c[2]}</div>` : ''}</td>`;
+      }).join('') + '</tr>';
+    });
+    $('mx').innerHTML = h + '</tbody>';
+  }
+
+  function setMatrix(open){
+    matrixOpen = open;
+    $('matrix').hidden = !open;
+    stage.classList.toggle('matrix-open', open);
+    const b = $('matrixBtn');
+    b.setAttribute('aria-pressed', open ? 'true' : 'false');
+    b.textContent = open ? 'Back to 3D view' : 'Show comparison matrix';
+    if (open) $('matrixClose').focus();
+    else if ($('matrix').contains(document.activeElement)) b.focus();
+  }
+
+  renderMatrix();
+  $('matrixBtn').addEventListener('click', ()=>setMatrix(!matrixOpen));
+  $('matrixClose').addEventListener('click', ()=>setMatrix(false));
+  document.addEventListener('keydown', e=>{ if (e.key==='Escape' && matrixOpen) setMatrix(false); });
+
   function resize(){
     renderer.setSize(stage.clientWidth, stage.clientHeight, false);
   }
@@ -1489,6 +1644,7 @@
   function frame(now){
     requestAnimationFrame(frame);
     if (!full) return;
+    if (matrixOpen){ last=now; return; }   // nothing to draw while the matrix covers the viewer
     const dt=Math.min(0.05,(now-last)/1000); last=now;
     if (S.auto && !dragging) cam.theta += dt*0.35;
     updateCamera();
