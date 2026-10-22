@@ -1,299 +1,911 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dynamic Reality Capture Sandbox</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.263.0/umd/lucide.min.js"></script>
-    <style>
-        .canvas-bg {
-            background-image: radial-gradient(#334155 1px, transparent 1px);
-            background-size: 20px 20px;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reality capture view sandbox</title>
+<style>
+  :root{
+    --rail:#f1f3f5; --ink:#1a2128; --muted:#5f6b76; --line:#d5dbe0; --accent:#1f6fe5;
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none !important}
+  html,body{height:100%;margin:0}
+  body{
+    font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    color:var(--ink); background:var(--rail);
+    display:grid; grid-template-columns:330px 1fr; height:100vh; overflow:hidden;
+  }
+  .rail{padding:22px 20px 28px; overflow-y:auto; border-right:1px solid var(--line)}
+  .rail h1{font-size:18px; line-height:1.25; margin:0 0 4px; letter-spacing:-0.01em}
+  .rail .sub{margin:0 0 18px; color:var(--muted); font-size:13px}
+  fieldset{border:0; margin:0 0 16px; padding:0}
+  legend{padding:0; margin-bottom:6px; font-size:12px; font-weight:600; color:var(--muted)}
+  .seg{
+    display:grid; grid-auto-flow:column; grid-auto-columns:1fr;
+    border:1px solid #c3cbd2; border-radius:8px; overflow:hidden; background:#fff;
+  }
+  .seg button{
+    border:0; background:transparent; padding:8px 4px; font:inherit; font-size:13px;
+    color:var(--ink); cursor:pointer;
+  }
+  .seg button + button{border-left:1px solid #dde2e6}
+  .seg button[aria-pressed="true"]{background:var(--ink); color:#fff}
+  .seg button:focus-visible, select:focus-visible, input:focus-visible, .btn:focus-visible{
+    outline:2px solid var(--accent); outline-offset:-2px;
+  }
+  .about{
+    background:#fff; border:1px solid var(--line); border-radius:8px;
+    padding:10px 12px; margin:0 0 18px; font-size:13px; color:#2b353e;
+  }
+  .row{display:grid; grid-template-columns:1fr auto; gap:2px 8px; margin:0 0 14px; align-items:baseline}
+  .row label{font-size:13px; font-weight:500}
+  .row output{font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums}
+  .row input[type=range]{grid-column:1/-1; width:100%; accent-color:var(--accent); margin:4px 0 0}
+  .row select{grid-column:1/-1; width:100%; padding:7px 8px; font:inherit; font-size:13px; border:1px solid #c3cbd2; border-radius:8px; background:#fff}
+  .check{display:flex; gap:8px; align-items:center; margin:0 0 12px; font-size:13px}
+  .btn{
+    border:1px solid #c3cbd2; background:#fff; border-radius:8px; padding:7px 12px;
+    font:inherit; font-size:13px; cursor:pointer;
+  }
+  .btn:hover{background:#f7f8f9}
+  .group-title{margin:20px 0 10px; padding-top:14px; border-top:1px solid var(--line); font-size:12px; font-weight:600; color:var(--muted)}
+  .foot{margin-top:20px; font-size:12px; color:var(--muted)}
+
+  .stage{position:relative; background:#0b0e11; overflow:hidden; touch-action:none; cursor:grab; min-height:360px}
+  .stage:active{cursor:grabbing}
+  canvas{position:absolute; inset:0; width:100%; height:100%; display:block}
+  .panels{position:absolute; inset:0; display:grid; gap:2px; pointer-events:none}
+  .panel{position:relative; min-width:0}
+  .cap{position:absolute; left:16px; top:14px; right:16px}
+  .cap h2{margin:0; font-size:15px; font-weight:600; color:#eef2f5}
+  .cap p{margin:2px 0 0; font-size:12px; color:#8f9ca7}
+  .stats{position:absolute; left:16px; bottom:14px; margin:0; display:grid; gap:2px; font-size:12px; color:#cbd5dc; font-variant-numeric:tabular-nums}
+  .stats div{display:flex; gap:10px}
+  .stats dt{color:#7f8c97; min-width:64px}
+  .stats dd{margin:0}
+  .hud{position:absolute; right:16px; top:14px; text-align:right; font-size:12px; color:#6f7c87; pointer-events:none; line-height:1.5}
+  .hud b{color:#aab6bf; font-weight:600; font-variant-numeric:tabular-nums}
+  .err{position:absolute; inset:0; display:grid; place-items:center; color:#cbd5dc; padding:30px; text-align:center}
+
+  @media (max-width:860px){
+    body{grid-template-columns:1fr; grid-template-rows:68vh auto; height:auto; overflow:auto; order:0}
+    .stage{order:-1}
+    .rail{border-right:0; border-top:1px solid var(--line)}
+  }
+</style>
 </head>
-<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col font-sans selection:bg-indigo-500/30">
+<body>
 
-    <!-- Header -->
-    <header class="border-b border-slate-800 bg-slate-950/50 backdrop-blur px-6 py-4 flex items-center justify-between sticky top-0 z-10">
-        <div class="flex items-center gap-3">
-            <div class="p-2 bg-indigo-600/10 rounded-lg text-indigo-400">
-                <i data-lucide="layers" class="w-6 h-6"></i>
-            </div>
-            <div>
-                <h1 class="text-lg font-bold tracking-tight text-white">Reality Capture Sandbox</h1>
-                <p class="text-xs text-slate-400">Interactive Structure & Render Comparison</p>
-            </div>
-        </div>
-        <div class="flex items-center gap-2 text-xs bg-slate-800/60 px-3 py-1.5 rounded-full border border-slate-700/50">
-            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span class="text-slate-300 font-medium">Interactive Demo Mode</span>
-        </div>
-    </header>
+<aside class="rail">
+  <h1>Reality capture views</h1>
+  <p class="sub">One surface rendered as a mesh, a point cloud, and a Gaussian splat.</p>
 
-    <!-- Main Workspace -->
-    <main class="flex-1 grid grid-cols-1 lg:grid-cols-12 overflow-hidden">
-        
-        <!-- Left Sidebar: Controls -->
-        <section class="lg:col-span-4 border-r border-slate-800 bg-slate-950/20 p-6 flex flex-col gap-6 overflow-y-auto">
-            <div>
-                <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400 mb-3">1. Select Render Mode</h2>
-                <div class="grid grid-cols-1 gap-2.5" id="mode-selector">
-                    <!-- Modes populated by JS -->
-                </div>
-            </div>
+  <fieldset>
+    <legend>Scene</legend>
+    <div class="seg" id="seg-object">
+      <button type="button" data-v="pineapple" aria-pressed="true">Pineapple</button>
+      <button type="button" data-v="roadside" aria-pressed="false">Roadside</button>
+    </div>
+  </fieldset>
 
-            <div class="border-t border-slate-800/80 pt-5">
-                <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400 mb-3">2. Performance Variables</h2>
-                <div class="space-y-4 bg-slate-950/40 p-4 rounded-xl border border-slate-800/60">
-                    <div>
-                        <div class="flex justify-between text-xs mb-1.5">
-                            <span class="text-slate-400 flex items-center gap-1"><i data-lucide="database" class="w-3.5 h-3.5"></i> File Size</span>
-                            <span id="stat-size" class="font-mono text-indigo-400 font-medium">-</span>
-                        </div>
-                        <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                            <div id="bar-size" class="bg-indigo-500 h-full transition-all duration-500"></div>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="flex justify-between text-xs mb-1.5">
-                            <span class="text-slate-400 flex items-center gap-1"><i data-lucide="cpu" class="w-3.5 h-3.5"></i> VRAM Load</span>
-                            <span id="stat-vram" class="font-mono text-amber-400 font-medium">-</span>
-                        </div>
-                        <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                            <div id="bar-vram" class="bg-amber-500 h-full transition-all duration-500"></div>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="flex justify-between text-xs mb-1.5">
-                            <span class="text-slate-400 flex items-center gap-1"><i data-lucide="zap" class="w-3.5 h-3.5"></i> Render Speed</span>
-                            <span id="stat-speed" class="font-mono text-emerald-400 font-medium">-</span>
-                        </div>
-                        <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                            <div id="bar-speed" class="bg-emerald-500 h-full transition-all duration-500"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+  <fieldset>
+    <legend>View</legend>
+    <div class="seg" id="seg-view">
+      <button type="button" data-v="mesh" aria-pressed="false">Mesh</button>
+      <button type="button" data-v="points" aria-pressed="false">Points</button>
+      <button type="button" data-v="splat" aria-pressed="false">Splats</button>
+      <button type="button" data-v="compare" aria-pressed="true">Compare</button>
+    </div>
+  </fieldset>
 
-            <div class="border-t border-slate-800/80 pt-5 mt-auto">
-                <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-4 flex gap-3 items-start">
-                    <i data-lucide="info" class="w-5 h-5 text-indigo-400 shrink-0 mt-0.5"></i>
-                    <p class="text-xs text-slate-400 leading-relaxed">
-                        Notice how <strong class="text-slate-200">Gaussian Splatting</strong> bypasses structural geometry arrays to output high photorealism by rendering fuzzy mathematical primitives instead of lines or points.
-                    </p>
-                </div>
-            </div>
-        </section>
+  <p class="about" id="about"></p>
 
-        <!-- Right Pane: Interactive Canvas View -->
-        <section class="lg:col-span-8 bg-slate-950 flex flex-col relative canvas-bg overflow-hidden p-6">
-            
-            <!-- Floating View Controls -->
-            <div class="absolute top-6 left-6 z-10 flex gap-2">
-                <button onclick="toggleGrid()" class="bg-slate-900/90 hover:bg-slate-800 text-slate-300 border border-slate-800 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 backdrop-blur transition shadow-lg">
-                    <i data-lucide="grid" class="w-3.5 h-3.5"></i> Toggle Grid
-                </button>
-                <div class="bg-slate-900/90 text-slate-400 border border-slate-800 px-3 py-1.5 rounded-lg text-xs font-mono flex items-center gap-1.5 backdrop-blur shadow-lg">
-                    <i data-lucide="eye" class="w-3.5 h-3.5 text-indigo-400"></i> Camera: <span class="text-slate-200" id="cam-coord">Orbiting</span>
-                </div>
-            </div>
+  <div class="row" data-for="points splat">
+    <label for="density">Capture density</label><output id="density-out"></output>
+    <input type="range" id="density" min="1" max="100" step="1" value="15">
+  </div>
 
-            <!-- Viewport Visual Simulated Render Window -->
-            <div class="flex-1 flex items-center justify-center relative min-h-[350px]">
-                <div id="canvas-view" class="w-full max-w-xl aspect-video rounded-2xl border border-slate-800 bg-slate-900/50 shadow-2xl flex flex-col items-center justify-center p-8 relative overflow-hidden transition-all duration-500">
-                    <!-- Dynamic Graphic Render Container -->
-                    <div id="render-graphic" class="w-32 h-32 mb-6 text-slate-700 transition-all duration-500 relative flex items-center justify-center">
-                        <!-- Content Injected via JavaScript -->
-                    </div>
-                    
-                    <!-- Structural Definition Overlay Details -->
-                    <div class="text-center max-w-md px-4 z-10">
-                        <h3 id="render-title" class="text-lg font-bold text-white mb-1.5 transition-all">Select a Mode</h3>
-                        <p id="render-desc" class="text-sm text-slate-400 leading-relaxed transition-all">Click a reality capture framework on the left configuration panel to view structural math layout.</p>
-                    </div>
+  <div class="row" data-for="points splat">
+    <label for="noise">Capture noise</label><output id="noise-out"></output>
+    <input type="range" id="noise" min="0" max="100" step="1" value="0">
+  </div>
 
-                    <!-- Ambient Glow effect -->
-                    <div id="ambient-glow" class="absolute inset-0 bg-gradient-to-t from-indigo-500/0 to-indigo-500/0 pointer-events-none transition-all duration-700"></div>
-                </div>
-            </div>
+  <div class="group-title" data-for="mesh">Mesh</div>
+  <div class="row" data-for="mesh">
+    <label for="meshDetail">Mesh detail</label><output id="meshDetail-out"></output>
+    <input type="range" id="meshDetail" min="10" max="100" step="5" value="50">
+  </div>
+  <div class="row" data-for="mesh">
+    <label for="meshStyle">Mesh display</label><span></span>
+    <select id="meshStyle">
+      <option value="textured">Textured</option>
+      <option value="edges" selected>Textured with edges</option>
+      <option value="clay">Clay (geometry only)</option>
+      <option value="wire">Wireframe</option>
+    </select>
+  </div>
 
-            <!-- Bottom Attribute Field Matrix Tracker -->
-            <div class="mt-auto bg-slate-900/50 border border-slate-800/80 rounded-xl p-4 backdrop-blur">
-                <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2 flex items-center gap-1.5">
-                    <i data-lucide="binary" class="w-3.5 h-3.5"></i> Header Properties Packed in PLY
-                </h4>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-2 font-mono text-[11px]" id="attribute-matrix">
-                    <!-- Populated dynamically -->
-                </div>
-            </div>
-        </section>
-    </main>
+  <div class="group-title" data-for="points">Point cloud</div>
+  <div class="row" data-for="points">
+    <label for="pointSize">Point size</label><output id="pointSize-out"></output>
+    <input type="range" id="pointSize" min="1" max="8" step="0.5" value="2.5">
+  </div>
 
-    <!-- App Engine Script -->
-    <script>
-        const modes = [
-            {
-                id: 'point-cloud',
-                name: 'Point Cloud',
-                subtitle: 'Raw Disconnected Coordinates',
-                icon: 'dot-chart',
-                desc: 'A collection of isolated coordinates mapped in 3D space. Up close, the asset breaks apart into porous pixel arrays with large empty gaps, lacking solid surface bounds.',
-                size: '22 MB', sizePct: 35,
-                vram: '45 MB', vramPct: 20,
-                speed: '90 FPS', speedPct: 95,
-                glow: 'from-sky-500/5 via-transparent to-transparent',
-                attrs: ['property float x', 'property float y', 'property float z', 'property uchar red', 'property uchar green', 'property uchar blue'],
-                graphicHtml: `
-                    <div class="absolute inset-0 grid grid-cols-6 grid-rows-6 gap-4 p-2 opacity-80 animate-pulse">
-                        ${Array(36).fill(0).map(() => `<div class="w-1.5 h-1.5 bg-sky-400 rounded-full mx-auto my-auto shadow-[0_0_4px_#38bdf8]"></div>`).join('')}
-                    </div>
-                `
-            },
-            {
-                id: '3d-mesh',
-                name: '3D Mesh',
-                subtitle: 'Polygonal Textured Faces',
-                icon: 'triangle',
-                desc: 'Traditional rigid wireframe connecting vertex arrays into structured triangular surfaces. Highly optimized for gaming hardware, but battles with complex geometries like leaves, hair, or mirrors.',
-                size: '145 MB', sizePct: 90,
-                vram: '280 MB', vramPct: 85,
-                speed: '60 FPS', speedPct: 65,
-                glow: 'from-amber-500/5 via-transparent to-transparent',
-                attrs: ['element vertex 4820', 'element face 9640', 'property int vertex_indices', 'property float nx', 'property float ny', 'property float nz'],
-                graphicHtml: `
-                    <svg viewBox="0 0 100 100" class="w-full h-full text-amber-500/20 stroke-amber-500 stroke-[0.7] fill-none stroke-dasharray- animate-[spin_20s_linear_infinite]">
-                        <polygon points="50,15 15,75 85,75" class="fill-amber-500/5"/>
-                        <line x1="50" y1="15" x2="50" y2="75" />
-                        <line x1="15" y1="75" x2="50" y2="45" />
-                        <line x1="85" y1="75" x2="50" y2="45" />
-                        <line x1="50" y1="15" x2="50" y2="45" />
-                    </svg>
-                `
-            },
-            {
-                id: 'gaussian-splat',
-                name: 'Gaussian Splatting',
-                subtitle: 'Volumetric Continuous Fields',
-                icon: 'sparkles',
-                desc: 'Bypasses standard spatial surfaces entirely. Renders trained, view-dependent mathematical ellipsoids that blend seamlessly, outputting pure photorealism and specular light reflections.',
-                size: '48 MB', sizePct: 55,
-                vram: '190 MB', vramPct: 60,
-                speed: '75 FPS', speedPct: 80,
-                glow: 'from-indigo-500/10 via-transparent to-transparent',
-                attrs: ['property float scale_0', 'property float scale_1', 'property float rot_0', 'property float rot_1', 'property float opacity', 'property float f_dc_0'],
-                graphicHtml: `
-                    <div class="absolute inset-0 flex items-center justify-center">
-                        <div class="absolute w-24 h-16 bg-indigo-500/30 rounded-full blur-md transform rotate-12 animate-ping duration-1000"></div>
-                        <div class="absolute w-28 h-12 bg-purple-500/40 rounded-full blur-lg transform -rotate-45 animate-pulse"></div>
-                        <div class="absolute w-16 h-16 bg-pink-500/30 rounded-full blur-xl animate-bounce"></div>
-                    </div>
-                `
-            }
-        ];
+  <div class="group-title" data-for="splat">Gaussian splat</div>
+  <div class="row" data-for="splat">
+    <label for="splatSize">Splat size</label><output id="splatSize-out"></output>
+    <input type="range" id="splatSize" min="0.4" max="3" step="0.05" value="1">
+  </div>
+  <label class="check" data-for="splat"><input type="checkbox" id="outlines"> Show splat outlines</label>
 
-        let activeMode = 'point-cloud';
-        let showGrid = true;
+  <div class="group-title">Camera</div>
+  <label class="check"><input type="checkbox" id="auto"> Auto-rotate</label>
+  <button type="button" class="btn" id="reset">Reset view</button>
 
-        function initApp() {
-            // Render Mode Buttons
-            const container = document.getElementById('mode-selector');
-            container.innerHTML = modes.map(m => `
-                <button id="btn-${m.id}" onclick="setMode('${m.id}')" class="w-full text-left p-4 rounded-xl border transition-all flex items-center justify-between group">
-                    <div class="flex items-center gap-3.5">
-                        <div id="icon-box-${m.id}" class="p-2.5 rounded-lg transition-colors">
-                            <i data-lucide="${m.icon}" class="w-5 h-5"></i>
-                        </div>
-                        <div>
-                            <h3 class="font-bold text-sm text-white group-hover:text-indigo-400 transition-colors">${m.name}</h3>
-                            <p class="text-xs text-slate-400 mt-0.5">${m.subtitle}</p>
-                        </div>
-                    </div>
-                    <i data-lucide="chevron-right" class="w-4 h-4 text-slate-600 group-hover:text-slate-400 group-hover:translate-x-0.5 transition-all"></i>
-                </button>
-            `).join('');
+  <p class="foot">Demo surfaces are procedural. Points and splats are sampled from the reference surface. Real captures are measured (points) or trained from photos (splats), so expect noise, holes, and view-dependent color that this demo doesn't reproduce.</p>
+</aside>
 
-            setMode(activeMode);
-            lucide.createIcons();
+<main class="stage" id="stage">
+  <canvas id="gl"></canvas>
+  <div class="panels" id="panels"></div>
+  <div class="hud"><b id="fps">--</b> fps<br>Drag to orbit, scroll to zoom, right-drag to pan</div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+  'use strict';
+
+  const stage = document.getElementById('stage');
+  const panelsEl = document.getElementById('panels');
+  const canvas = document.getElementById('gl');
+
+  if (typeof THREE === 'undefined') {
+    stage.insertAdjacentHTML('beforeend', '<div class="err">Three.js failed to load from cdnjs.cloudflare.com. Check your network access and reload.</div>');
+    return;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Small helpers                                                       */
+  /* ------------------------------------------------------------------ */
+  function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+  const lerp = (a,b,t) => a + (b-a)*t;
+  const smooth = (a,b,x) => { const t=Math.min(1,Math.max(0,(x-a)/(b-a))); return t*t*(3-2*t); };
+  const hex = h => [(h>>16&255)/255,(h>>8&255)/255,(h&255)/255];
+  const mix = (c1,c2,t) => [lerp(c1[0],c2[0],t),lerp(c1[1],c2[1],t),lerp(c1[2],c2[2],t)];
+  const scale3 = (c,s) => [c[0]*s,c[1]*s,c[2]*s];
+  function hash2(x,y){const s=Math.sin(x*127.1+y*311.7)*43758.5453;return s-Math.floor(s);}
+  function vnoise(x,y){
+    const xi=Math.floor(x), yi=Math.floor(y), xf=x-xi, yf=y-yi;
+    const u=xf*xf*(3-2*xf), v=yf*yf*(3-2*yf);
+    const a=hash2(xi,yi), b=hash2(xi+1,yi), c=hash2(xi,yi+1), d=hash2(xi+1,yi+1);
+    return a+(b-a)*u+(c-a)*v+(a-b-c+d)*u*v;
+  }
+  const fmt = n => Math.round(n).toLocaleString('en-US');
+  const fmtBytes = b => b < 1e6 ? Math.max(1,Math.round(b/1e3)) + ' KB' : (b/1e6).toFixed(1) + ' MB';
+
+  /* ------------------------------------------------------------------ */
+  /* Geometry builder: merges pieces into one non-indexed triangle soup  */
+  /* with baked lighting in vertex colors (this stands in for "captured  */
+  /* color", which has lighting baked in by the camera).                 */
+  /* ------------------------------------------------------------------ */
+  const LIGHT = new THREE.Vector3(0.45, 0.85, 0.35).normalize();
+  function shade(nx,ny,nz,two){
+    let l = nx*LIGHT.x + ny*LIGHT.y + nz*LIGHT.z;
+    l = two ? Math.abs(l) : Math.max(l,0);
+    const hemi = two ? 0.75 : 0.5 + 0.5*ny;
+    return 0.30 + 0.55*l + 0.30*hemi;
+  }
+
+  class Builder {
+    constructor(){ this.pos=[]; this.nor=[]; this.col=[]; this.tw=[]; }
+    add(geo, opt = {}){
+      if (!geo.attributes.normal) geo.computeVertexNormals();
+      const g = geo.index ? geo.toNonIndexed() : geo;
+      if (opt.matrix) g.applyMatrix4(opt.matrix);
+      const P=g.attributes.position, N=g.attributes.normal, C=g.attributes.color;
+      const n=P.count;
+      for (let i=0;i<n;i++){
+        const x=P.getX(i), y=P.getY(i), z=P.getZ(i);
+        const nx=N.getX(i), ny=N.getY(i), nz=N.getZ(i);
+        let c;
+        if (opt.colorFn) c = opt.colorFn(x,y,z);
+        else if (C) c = [C.getX(i),C.getY(i),C.getZ(i)];
+        else c = opt.color;
+        const s = shade(nx,ny,nz,!!opt.twoSided);
+        this.pos.push(x,y,z); this.nor.push(nx,ny,nz);
+        this.col.push(Math.min(1,c[0]*s), Math.min(1,c[1]*s), Math.min(1,c[2]*s));
+      }
+      const w = opt.weight || 1;
+      for (let t=0;t<n/3;t++) this.tw.push(w);
+    }
+    finish(){
+      const pos=new Float32Array(this.pos);
+      let mn=[Infinity,Infinity,Infinity], mx=[-Infinity,-Infinity,-Infinity];
+      for (let i=0;i<pos.length;i+=3) for (let k=0;k<3;k++){ if(pos[i+k]<mn[k])mn[k]=pos[i+k]; if(pos[i+k]>mx[k])mx[k]=pos[i+k]; }
+      const center=[(mn[0]+mx[0])/2,(mn[1]+mx[1])/2,(mn[2]+mx[2])/2];
+      const radius=0.5*Math.hypot(mx[0]-mn[0],mx[1]-mn[1],mx[2]-mn[2]);
+      return { pos, nor:new Float32Array(this.nor), col:new Float32Array(this.col), tw:new Float32Array(this.tw), center, radius };
+    }
+  }
+
+  const xform = (x,y,z,rx=0,ry=0,rz=0) => new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(rx,ry,rz)).setPosition(x,y,z);
+  const box = (B,w,h,d,x,y,z,color,weight=1,rot=[0,0,0]) =>
+    B.add(new THREE.BoxGeometry(w,h,d), { matrix:xform(x,y,z,...rot), color, weight });
+
+  /* ------------------------------------------------------------------ */
+  /* Scene 1: procedural pineapple                                       */
+  /* ------------------------------------------------------------------ */
+  function buildPineapple(res){
+    const B = new Builder();
+    const nu = Math.max(10, Math.round(96*res)), nv = Math.max(16, Math.round(128*res));
+    const H = 2.3;
+    const pos = new Float32Array((nu+1)*nv*3), col = new Float32Array((nu+1)*nv*3);
+    const gold=hex(0xe3a425), groove=hex(0x6b4a14), eye=hex(0x8a4b12), olive=hex(0x8aa032);
+
+    for (let i=0;i<=nu;i++){
+      const u=i/nu;
+      const prof = Math.pow(Math.max(Math.sin(Math.PI*u),0),0.42) * (1.0 - 0.10*(u-0.35));
+      const bump = Math.min(1, Math.sin(Math.PI*u)/0.15);
+      for (let j=0;j<nv;j++){
+        const v=j/nv*Math.PI*2;
+        // Two crossing plane waves give a staggered diamond lattice of "eyes"
+        const a=9*v+20*u, b=9*v-20*u;
+        const h=0.5+0.25*(Math.cos(a)+Math.cos(b));
+        const r=prof*(1+0.075*Math.pow(h,1.3)*bump);
+        const k=i*nv+j;
+        pos[k*3]=Math.cos(v)*r; pos[k*3+1]=(u-0.5)*H; pos[k*3+2]=Math.sin(v)*r;
+        let c=mix(groove,gold,smooth(0.15,0.65,h));
+        c=mix(c,eye,smooth(0.82,0.97,h)*0.8*bump);
+        c=mix(c,olive,smooth(0.80,1.0,u)*0.6);
+        c=scale3(c,0.85+0.15*smooth(0,0.3,u));
+        col[k*3]=c[0]; col[k*3+1]=c[1]; col[k*3+2]=c[2];
+      }
+    }
+    const idx=[];
+    for (let i=0;i<nu;i++) for (let j=0;j<nv;j++){
+      const a=i*nv+j, b=i*nv+(j+1)%nv, c=(i+1)*nv+j, d=(i+1)*nv+(j+1)%nv;
+      idx.push(a,c,b, b,c,d);
+    }
+    const body=new THREE.BufferGeometry();
+    body.setIndex(idx);
+    body.setAttribute('position',new THREE.BufferAttribute(pos,3));
+    body.setAttribute('color',new THREE.BufferAttribute(col,3));
+    body.computeVertexNormals();
+    B.add(body);
+
+    // Crown: three tiers of curved, tapered leaf ribbons
+    const rng = mulberry32(7);
+    const tiers=[
+      {n:18,e0:0.80,len:1.05,bend:0.55,w:0.17,sr:0.38},
+      {n:14,e0:0.48,len:1.25,bend:0.50,w:0.17,sr:0.22},
+      {n:9, e0:0.16,len:1.35,bend:0.35,w:0.15,sr:0.08}
+    ];
+    const seg=Math.max(5,Math.round(14*res));
+    const y0=H/2-0.10;
+    const leafDark=hex(0x2c5a1c), leafLight=hex(0x78a62e), leafTip=hex(0x8a7a30);
+    tiers.forEach((T,ti)=>{
+      for (let l=0;l<T.n;l++){
+        const phi=l/T.n*Math.PI*2+ti*0.7+(rng()-0.5)*0.25;
+        const e0=T.e0+(rng()-0.5)*0.14, len=T.len*(0.85+rng()*0.3), bend=T.bend*(0.8+rng()*0.4), w0=T.w*(0.85+rng()*0.3);
+        const cp=Math.cos(phi), sp=Math.sin(phi);
+        let px=cp*T.sr, py=y0, pz=sp*T.sr;
+        const side=[-sp,0,cp];
+        const gp=[], gc=[], gi=[];
+        for (let k=0;k<=seg;k++){
+          const s=k/seg, e=e0+bend*s*s;
+          const dx=Math.sin(e)*cp, dy=Math.cos(e), dz=Math.sin(e)*sp;
+          if (k>0){ px+=dx*len/seg; py+=dy*len/seg; pz+=dz*len/seg; }
+          const w=w0*Math.pow(Math.sin(Math.PI*(0.10+0.90*s)),0.7);
+          let fx=dy*side[2]-dz*side[1], fy=dz*side[0]-dx*side[2], fz=dx*side[1]-dy*side[0];
+          const fl=Math.hypot(fx,fy,fz)||1; fx/=fl; fy/=fl; fz/=fl;
+          const fold=-0.35*w; // slight trough down the center of each leaf
+          gp.push(px-side[0]*w,py-side[1]*w,pz-side[2]*w, px+fx*fold,py+fy*fold,pz+fz*fold, px+side[0]*w,py+side[1]*w,pz+side[2]*w);
+          let c=mix(leafDark,leafLight,smooth(0,0.8,s));
+          c=mix(c,leafTip,smooth(0.9,1,s)*0.7);
+          const m=scale3(c,1.12);
+          gc.push(c[0],c[1],c[2], m[0],m[1],m[2], c[0],c[1],c[2]);
         }
-
-        function setMode(id) {
-            activeMode = id;
-            const data = modes.find(m => m.id === id);
-
-            // Update selectors
-            modes.forEach(m => {
-                const btn = document.getElementById(`btn-${m.id}`);
-                const iconBox = document.getElementById(`icon-box-${m.id}`);
-                if (m.id === id) {
-                    btn.className = "w-full text-left p-4 rounded-xl border border-indigo-500/50 bg-indigo-950/20 flex items-center justify-between group shadow-[0_0_15px_rgba(99,102,241,0.05)]";
-                    iconBox.className = "p-2.5 rounded-lg bg-indigo-600 text-white";
-                } else {
-                    btn.className = "w-full text-left p-4 rounded-xl border border-slate-800/80 bg-slate-900/30 hover:border-slate-700/80 hover:bg-slate-900/60 flex items-center justify-between group transition-all";
-                    iconBox.className = "p-2.5 rounded-lg bg-slate-800 text-slate-400 group-hover:bg-slate-700 group-hover:text-slate-200 transition-colors";
-                }
-            });
-
-            // Update stats
-            document.getElementById('stat-size').innerText = data.size;
-            document.getElementById('stat-vram').innerText = data.vram;
-            document.getElementById('stat-speed').innerText = data.speed;
-
-            document.getElementById('bar-size').style.width = `${data.sizePct}%`;
-            document.getElementById('bar-vram').style.width = `${data.vramPct}%`;
-            document.getElementById('bar-speed').style.width = `${data.speedPct}%`;
-
-            // Update display window
-            document.getElementById('render-title').innerText = data.name;
-            document.getElementById('render-desc').innerText = data.desc;
-            document.getElementById('render-graphic').innerHTML = data.graphicHtml;
-            
-            // Adjust glowing ring
-            const viewFrame = document.getElementById('canvas-view');
-            const borderColors = {
-                'point-cloud': 'border-sky-500/30 shadow-sky-500/5',
-                '3d-mesh': 'border-amber-500/30 shadow-amber-500/5',
-                'gaussian-splat': 'border-indigo-500/30 shadow-indigo-500/5'
-            };
-            viewFrame.className = `w-full max-w-xl aspect-video rounded-2xl border bg-slate-900/60 shadow-2xl flex flex-col items-center justify-center p-8 relative overflow-hidden transition-all duration-500 ${borderColors[id]}`;
-
-            document.getElementById('ambient-glow').className = `absolute inset-0 bg-gradient-to-t ${data.glow} pointer-events-none transition-all duration-700`;
-
-            // Update fields/header variables
-            const attrContainer = document.getElementById('attribute-matrix');
-            attrContainer.innerHTML = data.attrs.map(attr => `
-                <div class="bg-slate-950/60 border border-slate-800/60 text-slate-400 p-2 rounded-lg flex items-center gap-2">
-                    <span class="w-1.5 h-1.5 rounded-full ${id === 'point-cloud' ? 'bg-sky-400' : id === '3d-mesh' ? 'bg-amber-400' : 'bg-indigo-400'}"></span>
-                    <span class="truncate">${attr}</span>
-                </div>
-            `).join('');
-
-            // Re-render fresh dynamic icons inside generated blocks
-            lucide.createIcons();
+        for (let k=0;k<seg;k++){
+          const a=k*3,b=a+1,c=a+2,d=a+3,e2=a+4,f=a+5;
+          gi.push(a,d,b, b,d,e2, b,e2,c, c,e2,f);
         }
+        const g=new THREE.BufferGeometry();
+        g.setIndex(gi);
+        g.setAttribute('position',new THREE.Float32BufferAttribute(gp,3));
+        g.setAttribute('color',new THREE.Float32BufferAttribute(gc,3));
+        g.computeVertexNormals();
+        B.add(g,{twoSided:true});
+      }
+    });
+    return B.finish();
+  }
 
-        function toggleGrid() {
-            showGrid = !showGrid;
-            const body = document.body;
-            const mainCanvas = document.querySelector('.canvas-bg');
-            if (showGrid) {
-                mainCanvas.style.backgroundImage = "radial-gradient(#334155 1px, transparent 1px)";
-            } else {
-                mainCanvas.style.backgroundImage = "none";
-            }
+  /* ------------------------------------------------------------------ */
+  /* Scene 2: roadside (road, striping, guardrail, sign, pole, cones)    */
+  /* ------------------------------------------------------------------ */
+  function buildRoadside(res){
+    const B = new Builder();
+    const asphalt=hex(0x4a4d52), grass=hex(0x56763a);
+    const seg=Math.max(4,Math.round(24*res));
+    const rad=Math.max(6,Math.round(12*res));
+
+    const road=new THREE.PlaneGeometry(6,12,seg,seg*2); road.rotateX(-Math.PI/2);
+    B.add(road,{colorFn:(x,y,z)=>{
+      const n=0.80+0.26*vnoise(x*2.5+10,z*2.5)+0.16*vnoise(x*9,z*9);
+      return scale3(asphalt,n);
+    }});
+
+    [-1,1].forEach(side=>{
+      const g=new THREE.PlaneGeometry(3,12,Math.max(2,Math.round(seg/2)),seg*2);
+      g.rotateX(-Math.PI/2); g.translate(side*4.5,0,0);
+      const p=g.attributes.position;
+      for (let i=0;i<p.count;i++){
+        const x=p.getX(i), z=p.getZ(i);
+        const edge=smooth(3.0,3.6,Math.abs(x)); // keep the road edge flush, let the verge undulate
+        p.setY(i, edge*0.18*(vnoise(x*1.3,z*1.3)-0.35));
+      }
+      g.computeVertexNormals();
+      B.add(g,{weight:0.6,colorFn:(x,y,z)=>{
+        const n=0.75+0.5*vnoise(x*2.2,z*2.2+4)+0.15*vnoise(x*8,z*8);
+        return mix(scale3(grass,n),hex(0x7a6a44),0.25*vnoise(x*0.8,z*0.8+9));
+      }});
+    });
+
+    // Lane markings
+    [-2.75,2.75].forEach(x=>box(B,0.15,0.012,12,x,0.008,0,hex(0xe8e8e0),3));
+    for (let z=-5;z<=5;z+=3) box(B,0.14,0.012,1.5,0,0.008,z,hex(0xe9b824),3);
+
+    // W-beam guardrail on the right
+    for (let z=-5.5;z<=5.5;z+=2) box(B,0.14,0.75,0.12,3.7,0.375,z,hex(0x8a8f94),6);
+    box(B,0.07,0.32,12,3.62,0.58,0,hex(0xb9bec4),5);
+
+    // Warning sign
+    B.add(new THREE.CylinderGeometry(0.04,0.04,2.6,rad),{matrix:xform(-3.9,1.3,1.5),color:hex(0x7b8087),weight:8});
+    box(B,0.95,0.95,0.03,-3.9,2.45,1.5,hex(0xf2c318),10,[0,0,Math.PI/4]);
+    box(B,0.12,0.42,0.02,-3.9,2.52,1.525,hex(0x1b1b1b),12);
+    box(B,0.12,0.12,0.02,-3.9,2.22,1.525,hex(0x1b1b1b),12);
+
+    // Light pole with arm and luminaire
+    B.add(new THREE.CylinderGeometry(0.04,0.08,7,rad),{matrix:xform(5.0,3.5,-2.5),color:hex(0x9ea4aa),weight:5});
+    B.add(new THREE.CylinderGeometry(0.035,0.035,2.2,Math.max(6,Math.round(8*res))),{matrix:xform(3.9,6.9,-2.5,0,0,Math.PI/2),color:hex(0x9ea4aa),weight:5});
+    box(B,0.7,0.1,0.28,2.9,6.85,-2.5,hex(0x30343a),6);
+    box(B,0.5,0.02,0.2,2.9,6.79,-2.5,hex(0xfff1c0),6);
+
+    // Traffic cones
+    [-3.5,-2.5,-1.5].forEach(z=>{
+      B.add(new THREE.ConeGeometry(0.15,0.6,rad),{matrix:xform(2.4,0.3,z),color:hex(0xf0661a),weight:10});
+    });
+    return B.finish();
+  }
+
+  const BUILDERS = { pineapple: buildPineapple, roadside: buildRoadside };
+  const CAMERA_DEFAULTS = { pineapple:{theta:0.6,phi:1.38}, roadside:{theta:0.75,phi:1.2} };
+
+  /* ------------------------------------------------------------------ */
+  /* "Capture": area-weighted surface sampling from the reference model  */
+  /* ------------------------------------------------------------------ */
+  const MAXN = 100000;
+  const STRIDE = 16; // cx cy cz | Ax Ay Az | Bx By Bz | Cx Cy Cz | r g b a
+
+  function sampleSurface(src, N, seed){
+    const rng=mulberry32(seed), T=src.tw.length, P=src.pos, NR=src.nor, CL=src.col;
+    const cdf=new Float64Array(T); let total=0;
+    for (let t=0;t<T;t++){
+      const o=t*9;
+      const ux=P[o+3]-P[o], uy=P[o+4]-P[o+1], uz=P[o+5]-P[o+2];
+      const vx=P[o+6]-P[o], vy=P[o+7]-P[o+1], vz=P[o+8]-P[o+2];
+      const a=0.5*Math.hypot(uy*vz-uz*vy, uz*vx-ux*vz, ux*vy-uy*vx);
+      total+=a*src.tw[t]; cdf[t]=total;
+    }
+    const pos=new Float32Array(N*3), col=new Float32Array(N*3), splat=new Float32Array(N*STRIDE);
+    for (let i=0;i<N;i++){
+      const r=rng()*total; let lo=0, hi=T-1;
+      while (lo<hi){ const mid=(lo+hi)>>1; if (cdf[mid]<r) lo=mid+1; else hi=mid; }
+      const o=lo*9;
+      const r1=Math.sqrt(rng()), r2=rng();
+      const wa=1-r1, wb=r1*(1-r2), wc=r1*r2;
+      const x=wa*P[o]+wb*P[o+3]+wc*P[o+6], y=wa*P[o+1]+wb*P[o+4]+wc*P[o+7], z=wa*P[o+2]+wb*P[o+5]+wc*P[o+8];
+      let nx=wa*NR[o]+wb*NR[o+3]+wc*NR[o+6], ny=wa*NR[o+1]+wb*NR[o+4]+wc*NR[o+7], nz=wa*NR[o+2]+wb*NR[o+5]+wc*NR[o+8];
+      const nl=Math.hypot(nx,ny,nz)||1; nx/=nl; ny/=nl; nz/=nl;
+      const cr=wa*CL[o]+wb*CL[o+3]+wc*CL[o+6], cg=wa*CL[o+1]+wb*CL[o+4]+wc*CL[o+7], cb=wa*CL[o+2]+wb*CL[o+5]+wc*CL[o+8];
+      pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
+      col[i*3]=cr; col[i*3+1]=cg; col[i*3+2]=cb;
+
+      // Tangent frame, randomly rotated around the normal
+      let tx,ty,tz;
+      if (Math.abs(ny)<0.9){ tx=nz; ty=0; tz=-nx; } else { tx=0; ty=-nz; tz=ny; }
+      const tl=Math.hypot(tx,ty,tz)||1; tx/=tl; ty/=tl; tz/=tl;
+      const bx=ny*tz-nz*ty, by=nz*tx-nx*tz, bz=nx*ty-ny*tx;
+      const ang=rng()*Math.PI*2, ca=Math.cos(ang), sa=Math.sin(ang);
+      const t1x=tx*ca+bx*sa, t1y=ty*ca+by*sa, t1z=tz*ca+bz*sa;
+      const t2x=-tx*sa+bx*ca, t2y=-ty*sa+by*ca, t2z=-tz*sa+bz*ca;
+
+      const spacing=Math.sqrt(total/(N*src.tw[lo]));
+      const s1=spacing*0.62*(0.85+0.3*rng()), s2=spacing*0.62*(0.85+0.3*rng()), s3=spacing*0.07;
+      const q=i*STRIDE;
+      splat[q]=x; splat[q+1]=y; splat[q+2]=z;
+      splat[q+3]=t1x*s1; splat[q+4]=t1y*s1; splat[q+5]=t1z*s1;
+      splat[q+6]=t2x*s2; splat[q+7]=t2y*s2; splat[q+8]=t2z*s2;
+      splat[q+9]=nx*s3;  splat[q+10]=ny*s3; splat[q+11]=nz*s3;
+      splat[q+12]=cr; splat[q+13]=cg; splat[q+14]=cb; splat[q+15]=0.9;
+    }
+    return { N, pos, col, splat };
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Renderer, camera, scenes                                            */
+  /* ------------------------------------------------------------------ */
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+  renderer.autoClear = false;
+
+  const camera = new THREE.PerspectiveCamera(35, 1, 0.05, 500);
+  const cam = { theta:0.6, phi:1.3, radius:5, target:new THREE.Vector3() };
+
+  const scenes = { mesh:new THREE.Scene(), points:new THREE.Scene(), splat:new THREE.Scene() };
+  scenes.mesh.add(new THREE.HemisphereLight(0xffffff,0x4a5058,0.95));
+  const sun = new THREE.DirectionalLight(0xffffff,0.85); sun.position.set(4.5,8.5,3.5); scenes.mesh.add(sun);
+
+  const NOISE_GLSL = `
+    vec3 hash3(vec3 p3){
+      p3 = fract(p3 * vec3(.1031,.1030,.0973));
+      p3 += dot(p3, p3.yxz + 33.33);
+      return fract((p3.xxy + p3.yzz) * p3.zyx);
+    }`;
+
+  // Points: constant-pixel round dots
+  const pointMat = new THREE.ShaderMaterial({
+    uniforms:{ uSize:{value:2.5}, uPR:{value:1}, uNoise:{value:0} },
+    vertexShader: `
+      attribute vec3 aCol; uniform float uSize; uniform float uPR; uniform float uNoise;
+      varying vec3 vCol;
+      ${NOISE_GLSL}
+      void main(){
+        vec3 p = position + (hash3(position) - 0.5) * 2.0 * uNoise;
+        vCol = aCol;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(p,1.0);
+        gl_PointSize = uSize * uPR;
+      }`,
+    fragmentShader: `
+      varying vec3 vCol;
+      void main(){
+        vec2 q = gl_PointCoord - 0.5;
+        if (dot(q,q) > 0.25) discard;
+        gl_FragColor = vec4(vCol,1.0);
+      }`
+  });
+
+  // Gaussian splats: 3D covariance projected to a 2D screen-space ellipse (EWA splatting)
+  const splatMat = new THREE.ShaderMaterial({
+    uniforms:{ uViewport:{value:new THREE.Vector2(1,1)}, uScale:{value:1}, uNoise:{value:0}, uDebug:{value:0} },
+    transparent:true, depthTest:false, depthWrite:false,
+    vertexShader: `
+      attribute vec3 aCenter; attribute vec3 aA; attribute vec3 aB; attribute vec3 aC; attribute vec4 aColor;
+      uniform vec2 uViewport; uniform float uScale; uniform float uNoise;
+      varying vec4 vColor; varying vec2 vUV;
+      ${NOISE_GLSL}
+      void main(){
+        vec3 c = aCenter + (hash3(aCenter) - 0.5) * 2.0 * uNoise;
+        vec4 vp = modelViewMatrix * vec4(c,1.0);
+        float d = -vp.z;
+        if (d < 0.05) { gl_Position = vec4(2.0,2.0,2.0,1.0); return; }
+        float fx = projectionMatrix[0][0] * uViewport.x * 0.5;
+        float fy = projectionMatrix[1][1] * uViewport.y * 0.5;
+        mat3 W = mat3(modelViewMatrix);
+        vec3 a = W * (aA * uScale);
+        vec3 b = W * (aB * uScale);
+        vec3 e = W * (aC * uScale);
+        vec3 j1 = vec3(fx/d, 0.0, fx*vp.x/(d*d));
+        vec3 j2 = vec3(0.0, fy/d, fy*vp.y/(d*d));
+        float a1 = dot(j1,a), a2 = dot(j2,a);
+        float b1 = dot(j1,b), b2 = dot(j2,b);
+        float e1 = dot(j1,e), e2 = dot(j2,e);
+        float c00 = a1*a1 + b1*b1 + e1*e1 + 0.3;
+        float c01 = a1*a2 + b1*b2 + e1*e2;
+        float c11 = a2*a2 + b2*b2 + e2*e2 + 0.3;
+        float mid = 0.5*(c00 + c11);
+        float rad = length(vec2(0.5*(c00 - c11), c01));
+        float l1 = mid + rad;
+        float l2 = max(mid - rad, 0.05);
+        vec2 vv = vec2(c01, l1 - c00);
+        float vl = length(vv);
+        vec2 v1 = vl > 1e-6 ? vv / vl : vec2(1.0,0.0);
+        vec2 v2 = vec2(-v1.y, v1.x);
+        float r1 = min(3.0*sqrt(l1), 1024.0);
+        float r2 = min(3.0*sqrt(l2), 1024.0);
+        vec2 off = (position.x*r1)*v1 + (position.y*r2)*v2;
+        vUV = position.xy * 3.0;
+        vColor = aColor;
+        vec4 clip = projectionMatrix * vp;
+        clip.xy += off * 2.0 / uViewport * clip.w;
+        gl_Position = clip;
+      }`,
+    fragmentShader: `
+      uniform float uDebug;
+      varying vec4 vColor; varying vec2 vUV;
+      void main(){
+        float r2 = dot(vUV,vUV);
+        if (r2 > 9.0) discard;
+        float alpha = vColor.a * exp(-0.5*r2);
+        vec3 col = vColor.rgb;
+        if (uDebug > 0.5){
+          float ring = smoothstep(0.10, 0.0, abs(sqrt(r2) - 1.0));
+          alpha = max(ring*0.95, alpha*0.25);
+          col = mix(col, vec3(1.0), ring);
         }
+        if (alpha < 0.004) discard;
+        gl_FragColor = vec4(col, alpha);
+      }`
+  });
 
-        // Simulating passive camera floating math feedback
-        setInterval(() => {
-            if(Math.random() > 0.4) {
-                const x = (Math.sin(Date.now() / 2000) * 5).toFixed(2);
-                const y = (Math.cos(Date.now() / 1500) * 3).toFixed(2);
-                document.getElementById('cam-coord').innerText = `X: ${x}, Y: ${y}`;
-            }
-        }, 800);
+  const matTex   = new THREE.MeshBasicMaterial({ vertexColors:true, side:THREE.DoubleSide, polygonOffset:true, polygonOffsetFactor:1, polygonOffsetUnits:1 });
+  const matClay  = new THREE.MeshStandardMaterial({ color:0xd0d3d7, roughness:0.9, metalness:0, side:THREE.DoubleSide, polygonOffset:true, polygonOffsetFactor:1, polygonOffsetUnits:1 });
+  const matWire  = new THREE.MeshBasicMaterial({ color:0x8fd3c8, wireframe:true, transparent:true, opacity:0.85 });
+  const matEdges = new THREE.MeshBasicMaterial({ color:0x0b1014, wireframe:true, transparent:true, opacity:0.35 });
 
-        window.onload = initApp;
-    </script>
+  const meshGroup = new THREE.Group(); scenes.mesh.add(meshGroup);
+  let pointsObj = null, splatObj = null, splatGeo = null, splatBuf = null;
+
+  /* ------------------------------------------------------------------ */
+  /* App state                                                           */
+  /* ------------------------------------------------------------------ */
+  const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const S = { object:'pineapple', view:'compare', density:15, noise:0, meshDetail:50, meshStyle:'edges', pointSize:2.5, splatSize:1, outlines:false, auto:!reduced };
+  let active = ['mesh','points','splat'];
+  let full = null, samples = null, meshData = null;
+  let liveSplat = null, order = null, depth = null, counts = new Uint32Array(65537);
+  let lastFwd = new THREE.Vector3(9,9,9), lastK = -1, sortDirty = true;
+  let dragging = false;
+
+  const kSamples = () => Math.max(100, Math.round(MAXN * S.density / 100));
+  const noiseWorld = () => (S.noise/100) * (full ? full.radius : 1) * 0.03;
+
+  /* ------------------------------------------------------------------ */
+  /* Build / rebuild scene content                                       */
+  /* ------------------------------------------------------------------ */
+  function disposeObj(o){
+    if (!o) return;
+    o.parent && o.parent.remove(o);
+    o.geometry && o.geometry.dispose();
+  }
+
+  function makeMeshGeo(d){
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.BufferAttribute(d.pos,3));
+    g.setAttribute('normal',new THREE.BufferAttribute(d.nor,3));
+    g.setAttribute('color',new THREE.BufferAttribute(d.col,3));
+    return g;
+  }
+
+  function rebuildMeshObjects(){
+    while (meshGroup.children.length){ const c=meshGroup.children.pop(); c.geometry && c.geometry.dispose(); }
+    const g=makeMeshGeo(meshData);
+    const add = (mat, order=0) => { const m=new THREE.Mesh(g,mat); m.renderOrder=order; m.frustumCulled=false; meshGroup.add(m); };
+    switch (S.meshStyle){
+      case 'textured': add(matTex); break;
+      case 'edges':    add(matTex); add(matEdges,1); break;
+      case 'clay':     add(matClay); break;
+      case 'wire':     add(matWire); break;
+    }
+  }
+
+  function rebuildMeshData(){
+    meshData = S.meshDetail >= 100 ? full : BUILDERS[S.object](S.meshDetail/100);
+    rebuildMeshObjects();
+    updateStats();
+  }
+
+  function rebuildSampleObjects(){
+    disposeObj(pointsObj); disposeObj(splatObj);
+    if (splatGeo) splatGeo.dispose();
+
+    // Points
+    const pg=new THREE.BufferGeometry();
+    pg.setAttribute('position',new THREE.BufferAttribute(samples.pos,3));
+    pg.setAttribute('aCol',new THREE.BufferAttribute(samples.col,3));
+    pg.setDrawRange(0,kSamples());
+    pointsObj=new THREE.Points(pg,pointMat); pointsObj.frustumCulled=false;
+    scenes.points.add(pointsObj);
+
+    // Splats (instanced quads; per-instance data lives in one interleaved buffer that we re-sort by depth)
+    liveSplat = new Float32Array(samples.splat.length);
+    liveSplat.set(samples.splat);
+    order = new Uint32Array(samples.N);
+    depth = new Float32Array(samples.N);
+    splatGeo = new THREE.InstancedBufferGeometry();
+    splatGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-1,-1,0, 1,-1,0, 1,1,0, -1,1,0]),3));
+    splatGeo.setIndex([0,1,2, 0,2,3]);
+    splatBuf = new THREE.InstancedInterleavedBuffer(liveSplat, STRIDE, 1);
+    splatBuf.setUsage(THREE.DynamicDrawUsage);
+    splatGeo.setAttribute('aCenter', new THREE.InterleavedBufferAttribute(splatBuf,3,0));
+    splatGeo.setAttribute('aA',      new THREE.InterleavedBufferAttribute(splatBuf,3,3));
+    splatGeo.setAttribute('aB',      new THREE.InterleavedBufferAttribute(splatBuf,3,6));
+    splatGeo.setAttribute('aC',      new THREE.InterleavedBufferAttribute(splatBuf,3,9));
+    splatGeo.setAttribute('aColor',  new THREE.InterleavedBufferAttribute(splatBuf,4,12));
+    splatGeo.instanceCount = kSamples();
+    splatObj=new THREE.Mesh(splatGeo,splatMat); splatObj.frustumCulled=false;
+    scenes.splat.add(splatObj);
+    sortDirty = true; lastK = -1;
+  }
+
+  function applyDensity(){
+    const k=kSamples();
+    if (pointsObj) pointsObj.geometry.setDrawRange(0,k);
+    if (splatGeo) splatGeo.instanceCount=k;
+    sortDirty = true;
+    updateStats();
+  }
+
+  function loadObject(name){
+    S.object=name;
+    full = BUILDERS[name](1);
+    samples = sampleSurface(full, MAXN, 1234);
+    rebuildSampleObjects();
+    rebuildMeshData();
+    resetCamera();
+  }
+
+  /* Back-to-front counting sort of the visible splats along the view direction */
+  function sortSplats(fwd){
+    const k=kSamples(), M=samples.splat, L=liveSplat;
+    const fx=fwd.x, fy=fwd.y, fz=fwd.z;
+    let mn=Infinity, mx=-Infinity;
+    for (let i=0;i<k;i++){
+      const q=i*STRIDE, d=M[q]*fx+M[q+1]*fy+M[q+2]*fz;
+      depth[i]=d; if(d<mn)mn=d; if(d>mx)mx=d;
+    }
+    const range=(mx-mn)||1, B=65535;
+    counts.fill(0);
+    for (let i=0;i<k;i++){ const key=((mx-depth[i])/range*B)|0; order[i]=key; counts[key+1]++; }
+    for (let b=0;b<65536;b++) counts[b+1]+=counts[b];
+    const out = new Uint32Array(k);
+    for (let i=0;i<k;i++){ out[counts[order[i]]++]=i; }
+    for (let t=0;t<k;t++){
+      const s=out[t]*STRIDE, d=t*STRIDE;
+      L[d]=M[s];     L[d+1]=M[s+1];   L[d+2]=M[s+2];   L[d+3]=M[s+3];
+      L[d+4]=M[s+4]; L[d+5]=M[s+5];   L[d+6]=M[s+6];   L[d+7]=M[s+7];
+      L[d+8]=M[s+8]; L[d+9]=M[s+9];   L[d+10]=M[s+10]; L[d+11]=M[s+11];
+      L[d+12]=M[s+12]; L[d+13]=M[s+13]; L[d+14]=M[s+14]; L[d+15]=M[s+15];
+    }
+    splatBuf.needsUpdate = true;
+  }
+
+  const _fwd = new THREE.Vector3();
+  function maybeSort(){
+    camera.updateMatrixWorld();
+    camera.getWorldDirection(_fwd);
+    const k=kSamples();
+    const moved = Math.abs(_fwd.x-lastFwd.x)+Math.abs(_fwd.y-lastFwd.y)+Math.abs(_fwd.z-lastFwd.z) > 1e-4;
+    if (sortDirty || moved || k!==lastK){
+      sortSplats(_fwd);
+      lastFwd.copy(_fwd); lastK=k; sortDirty=false;
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Camera controls                                                     */
+  /* ------------------------------------------------------------------ */
+  function fitRadius(aspect){
+    const R = full.radius * 0.8;
+    const halfV = THREE.MathUtils.degToRad(camera.fov/2);
+    return R / Math.sin(Math.atan(Math.tan(halfV)*Math.min(aspect,1)));
+  }
+
+  function minPanelAspect(){
+    const els=[...panelsEl.children];
+    let a=Infinity;
+    els.forEach(el=>{ const r=el.getBoundingClientRect(); if(r.width>1&&r.height>1) a=Math.min(a,r.width/r.height); });
+    return isFinite(a) ? a : 1;
+  }
+
+  function resetCamera(){
+    if (!full) return;
+    const d=CAMERA_DEFAULTS[S.object];
+    cam.theta=d.theta; cam.phi=d.phi;
+    cam.target.set(full.center[0],full.center[1],full.center[2]);
+    cam.radius=fitRadius(minPanelAspect());
+    sortDirty=true;
+  }
+
+  function updateCamera(){
+    const sp=Math.sin(cam.phi);
+    camera.position.set(
+      cam.target.x + cam.radius*sp*Math.sin(cam.theta),
+      cam.target.y + cam.radius*Math.cos(cam.phi),
+      cam.target.z + cam.radius*sp*Math.cos(cam.theta)
+    );
+    camera.lookAt(cam.target);
+    camera.updateMatrixWorld();
+  }
+
+  const pointers = new Map();
+  let pinchPrev = 0;
+  stage.addEventListener('contextmenu', e=>e.preventDefault());
+  stage.addEventListener('pointerdown', e=>{
+    stage.setPointerCapture(e.pointerId);
+    pointers.set(e.pointerId,{x:e.clientX,y:e.clientY,button:e.button,shift:e.shiftKey});
+    dragging = true;
+    if (pointers.size===2){ const [a,b]=[...pointers.values()]; pinchPrev=Math.hypot(a.x-b.x,a.y-b.y); }
+  });
+  stage.addEventListener('pointermove', e=>{
+    const p=pointers.get(e.pointerId); if(!p) return;
+    const dx=e.clientX-p.x, dy=e.clientY-p.y;
+    p.x=e.clientX; p.y=e.clientY;
+    if (pointers.size===2){
+      const [a,b]=[...pointers.values()]; const dist=Math.hypot(a.x-b.x,a.y-b.y);
+      if (pinchPrev>0) cam.radius=clampRadius(cam.radius*pinchPrev/dist);
+      pinchPrev=dist; return;
+    }
+    if (p.button===2 || p.shift || e.shiftKey){
+      const right=new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,0);
+      const up=new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,1);
+      const k=cam.radius*2*Math.tan(THREE.MathUtils.degToRad(camera.fov/2))/stage.clientHeight;
+      cam.target.addScaledVector(right,-dx*k).addScaledVector(up,dy*k);
+    } else {
+      cam.theta -= dx*0.008;
+      cam.phi = Math.min(Math.PI-0.12, Math.max(0.12, cam.phi - dy*0.008));
+    }
+  });
+  const endPointer = e=>{ pointers.delete(e.pointerId); pinchPrev=0; if(!pointers.size) dragging=false; };
+  stage.addEventListener('pointerup', endPointer);
+  stage.addEventListener('pointercancel', endPointer);
+  const clampRadius = r => full ? Math.min(full.radius*12, Math.max(full.radius*0.12, r)) : r;
+  stage.addEventListener('wheel', e=>{
+    e.preventDefault();
+    cam.radius = clampRadius(cam.radius*Math.exp(e.deltaY*0.0012));
+  }, { passive:false });
+
+  /* ------------------------------------------------------------------ */
+  /* UI                                                                  */
+  /* ------------------------------------------------------------------ */
+  const MODE_INFO = {
+    mesh:   { title:'Mesh',           sub:'Connected triangles' },
+    points: { title:'Point cloud',    sub:'Measured XYZ and color' },
+    splat:  { title:'Gaussian splat', sub:'Soft, oriented 3D blobs' }
+  };
+  const ABOUT = {
+    mesh:    'Connected triangles. You get solid surfaces you can measure, clip, and take into CAD or GIS. Color comes from a texture, so it stays fixed as you change the viewing angle.',
+    points:  'Raw 3D measurements, each with an XYZ and a color. Exact and measurable, but there is no surface between points, so gaps open up when you zoom in or the capture is sparse.',
+    splat:   'Each splat is a soft, oriented 3D Gaussian. Splats are sorted by depth and blended, so they fill gaps and look photographic. They are built for viewing, not for taking measurements.',
+    compare: 'Same surface, three representations. Drop the capture density to see how each one handles gaps, then zoom in.'
+  };
+
+  const $ = id => document.getElementById(id);
+  function bindSeg(id, cb){
+    const el=$(id);
+    el.addEventListener('click', e=>{
+      const b=e.target.closest('button'); if(!b) return;
+      el.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed', x===b ? 'true':'false'));
+      cb(b.dataset.v);
+    });
+  }
+
+  function buildPanels(){
+    panelsEl.innerHTML='';
+    active.forEach(m=>{
+      const p=document.createElement('div'); p.className='panel'; p.dataset.mode=m;
+      p.innerHTML = `<div class="cap"><h2>${MODE_INFO[m].title}</h2><p>${MODE_INFO[m].sub}</p></div><dl class="stats"></dl>`;
+      panelsEl.appendChild(p);
+    });
+    panelsEl.style.gridTemplateColumns = `repeat(${active.length}, minmax(0,1fr))`;
+  }
+
+  function applyVisibility(){
+    document.querySelectorAll('[data-for]').forEach(el=>{
+      const tokens=el.dataset.for.split(' ');
+      el.hidden = !tokens.some(t=>active.includes(t));
+    });
+    $('about').textContent = ABOUT[S.view];
+  }
+
+  function updateStats(){
+    if (!meshData || !samples) return;
+    const k=kSamples();
+    const tris=meshData.tw.length, verts=Math.round(tris*0.55);
+    const rows = {
+      mesh:   [['Triangles',fmt(tris)],['Est. size',fmtBytes(verts*15+tris*13)]],
+      points: [['Points',fmt(k)],['Est. size',fmtBytes(k*26)]],
+      splat:  [['Splats',fmt(k)],['Est. size',fmtBytes(k*248)]]
+    };
+    panelsEl.querySelectorAll('.panel').forEach(p=>{
+      p.querySelector('.stats').innerHTML = rows[p.dataset.mode].map(r=>`<div><dt>${r[0]}</dt><dd>${r[1]}</dd></div>`).join('');
+    });
+    $('density-out').textContent = fmt(k) + ' samples';
+    $('noise-out').textContent = S.noise + '%';
+    $('meshDetail-out').textContent = S.meshDetail + '%';
+    $('pointSize-out').textContent = S.pointSize + ' px';
+    $('splatSize-out').textContent = S.splatSize.toFixed(2) + 'x';
+  }
+
+  function setView(v){
+    S.view=v;
+    active = v==='compare' ? ['mesh','points','splat'] : [v];
+    buildPanels(); applyVisibility(); updateStats();
+    resetCamera();
+  }
+
+  bindSeg('seg-object', v=>loadObject(v));
+  bindSeg('seg-view', setView);
+
+  let meshTimer=null;
+  $('density').addEventListener('input', e=>{ S.density=+e.target.value; applyDensity(); });
+  $('noise').addEventListener('input', e=>{ S.noise=+e.target.value; updateStats(); });
+  $('meshDetail').addEventListener('input', e=>{
+    S.meshDetail=+e.target.value; updateStats();
+    clearTimeout(meshTimer); meshTimer=setTimeout(rebuildMeshData,120);
+  });
+  $('meshStyle').addEventListener('change', e=>{ S.meshStyle=e.target.value; rebuildMeshObjects(); });
+  $('pointSize').addEventListener('input', e=>{ S.pointSize=+e.target.value; updateStats(); });
+  $('splatSize').addEventListener('input', e=>{ S.splatSize=+e.target.value; updateStats(); });
+  $('outlines').addEventListener('change', e=>{ S.outlines=e.target.checked; });
+  $('auto').checked = S.auto;
+  $('auto').addEventListener('change', e=>{ S.auto=e.target.checked; });
+  $('reset').addEventListener('click', resetCamera);
+
+  /* ------------------------------------------------------------------ */
+  /* Render loop                                                         */
+  /* ------------------------------------------------------------------ */
+  function resize(){
+    renderer.setSize(stage.clientWidth, stage.clientHeight, false);
+  }
+  new ResizeObserver(resize).observe(stage);
+
+  let last=performance.now(), frames=0, fpsT=last;
+  function frame(now){
+    requestAnimationFrame(frame);
+    if (!full) return;
+    const dt=Math.min(0.05,(now-last)/1000); last=now;
+    if (S.auto && !dragging) cam.theta += dt*0.35;
+    updateCamera();
+
+    const W=stage.clientWidth, H=stage.clientHeight, pr=renderer.getPixelRatio();
+    renderer.setScissorTest(false);
+    renderer.setViewport(0,0,W,H);
+    renderer.setClearColor(0x0b0e11,1);
+    renderer.clear();
+    renderer.setScissorTest(true);
+    renderer.setClearColor(0x12171c,1);
+
+    if (active.includes('splat')) maybeSort();
+
+    pointMat.uniforms.uSize.value = S.pointSize;
+    pointMat.uniforms.uPR.value = pr;
+    const nw = noiseWorld();
+    pointMat.uniforms.uNoise.value = nw;
+    splatMat.uniforms.uNoise.value = nw;
+    splatMat.uniforms.uDebug.value = S.outlines ? 1 : 0;
+    // Fewer splats means each one has to cover more area
+    splatMat.uniforms.uScale.value = S.splatSize * Math.sqrt(MAXN / kSamples());
+
+    const sr=stage.getBoundingClientRect();
+    panelsEl.querySelectorAll('.panel').forEach(el=>{
+      const r=el.getBoundingClientRect();
+      const w=r.width, h=r.height;
+      if (w<2||h<2) return;
+      const x=r.left-sr.left, y=sr.height-(r.top-sr.top)-h;
+      renderer.setViewport(x,y,w,h);
+      renderer.setScissor(x,y,w,h);
+      renderer.clear();
+      camera.aspect=w/h; camera.updateProjectionMatrix();
+      splatMat.uniforms.uViewport.value.set(w*pr,h*pr);
+      renderer.render(scenes[el.dataset.mode],camera);
+    });
+
+    frames++;
+    if (now-fpsT>500){ $('fps').textContent=Math.round(frames*1000/(now-fpsT)); frames=0; fpsT=now; }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Go                                                                  */
+  /* ------------------------------------------------------------------ */
+  resize();
+  buildPanels();
+  applyVisibility();
+  loadObject('pineapple');
+  requestAnimationFrame(frame);
+})();
+</script>
 </body>
 </html>
