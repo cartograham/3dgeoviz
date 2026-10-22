@@ -68,6 +68,11 @@
   .hud b{color:#aab6bf; font-weight:600; font-variant-numeric:tabular-nums}
   .err{position:absolute; inset:0; display:grid; place-items:center; color:#cbd5dc; padding:30px; text-align:center}
 
+  .seg button:disabled{opacity:.4; cursor:not-allowed}
+  .btnrow{display:flex; gap:8px; flex-wrap:wrap; margin:0 0 8px}
+  .status{margin:0 0 12px; font-size:12px; color:var(--muted); min-height:1.4em}
+  .stage.drop{outline:2px dashed #6aa9ff; outline-offset:-10px}
+
   @media (max-width:860px){
     body{grid-template-columns:1fr; grid-template-rows:68vh auto; height:auto; overflow:auto; order:0}
     .stage{order:-1}
@@ -89,17 +94,38 @@
     </div>
   </fieldset>
 
+  <div class="row" data-scene="pineapple">
+    <label for="rough">Leaf roughness</label><output id="rough-out"></output>
+    <input type="range" id="rough" min="0" max="100" step="5" value="75">
+  </div>
+
   <fieldset>
     <legend>View</legend>
     <div class="seg" id="seg-view">
-      <button type="button" data-v="mesh" aria-pressed="false">Mesh</button>
       <button type="button" data-v="points" aria-pressed="false">Points</button>
+      <button type="button" data-v="mesh" aria-pressed="false">Mesh</button>
       <button type="button" data-v="splat" aria-pressed="false">Splats</button>
       <button type="button" data-v="compare" aria-pressed="true">Compare</button>
     </div>
   </fieldset>
 
   <p class="about" id="about"></p>
+
+  <div class="group-title" style="margin-top:0;border-top:0;padding-top:0">Your data</div>
+  <div class="btnrow">
+    <button type="button" class="btn" id="open">Open .ply file</button>
+    <button type="button" class="btn" id="demo" hidden>Back to demo scene</button>
+  </div>
+  <input type="file" id="file" accept=".ply" hidden>
+  <p class="status" id="status" role="status" aria-live="polite"></p>
+  <div class="row" data-loaded hidden>
+    <label for="orient">Up axis</label><span></span>
+    <select id="orient">
+      <option value="zup">Z up</option>
+      <option value="yup">Y up</option>
+      <option value="ydown">Y down (COLMAP)</option>
+    </select>
+  </div>
 
   <div class="row" data-for="points splat">
     <label for="density">Capture density</label><output id="density-out"></output>
@@ -199,7 +225,7 @@
   }
 
   class Builder {
-    constructor(){ this.pos=[]; this.nor=[]; this.col=[]; this.tw=[]; }
+    constructor(){ this.pos=[]; this.nor=[]; this.col=[]; this.tw=[]; this.tr=[]; }
     add(geo, opt = {}){
       if (!geo.attributes.normal) geo.computeVertexNormals();
       const g = geo.index ? geo.toNonIndexed() : geo;
@@ -218,7 +244,7 @@
         this.col.push(Math.min(1,c[0]*s), Math.min(1,c[1]*s), Math.min(1,c[2]*s));
       }
       const w = opt.weight || 1;
-      for (let t=0;t<n/3;t++) this.tw.push(w);
+      for (let t=0;t<n/3;t++){ this.tw.push(w); this.tr.push(opt.rough||0); }
     }
     finish(){
       const pos=new Float32Array(this.pos);
@@ -226,7 +252,7 @@
       for (let i=0;i<pos.length;i+=3) for (let k=0;k<3;k++){ if(pos[i+k]<mn[k])mn[k]=pos[i+k]; if(pos[i+k]>mx[k])mx[k]=pos[i+k]; }
       const center=[(mn[0]+mx[0])/2,(mn[1]+mx[1])/2,(mn[2]+mx[2])/2];
       const radius=0.5*Math.hypot(mx[0]-mn[0],mx[1]-mn[1],mx[2]-mn[2]);
-      return { pos, nor:new Float32Array(this.nor), col:new Float32Array(this.col), tw:new Float32Array(this.tw), center, radius };
+      return { pos, nor:new Float32Array(this.nor), col:new Float32Array(this.col), tw:new Float32Array(this.tw), tr:new Float32Array(this.tr), center, radius };
     }
   }
 
@@ -282,7 +308,8 @@
       {n:14,e0:0.48,len:1.25,bend:0.50,w:0.17,sr:0.22},
       {n:9, e0:0.16,len:1.35,bend:0.35,w:0.15,sr:0.08}
     ];
-    const seg=Math.max(5,Math.round(14*res));
+    const seg=Math.max(4,Math.round(12*res));
+    const R=S.rough/100;
     const y0=H/2-0.10;
     const leafDark=hex(0x2c5a1c), leafLight=hex(0x78a62e), leafTip=hex(0x8a7a30);
     tiers.forEach((T,ti)=>{
@@ -298,12 +325,21 @@
           const dx=Math.sin(e)*cp, dy=Math.cos(e), dz=Math.sin(e)*sp;
           if (k>0){ px+=dx*len/seg; py+=dy*len/seg; pz+=dz*len/seg; }
           const w=w0*Math.pow(Math.sin(Math.PI*(0.10+0.90*s)),0.7);
+          // Thin features capture badly: ragged edges, wobble, and uneven width.
+          // Noise is a function of position along the leaf (not vertex index), so it stays consistent at any mesh detail.
+          const wl=w*(1-R*0.65*vnoise(s*11+l*7.3,3.1+ti));
+          const wr=w*(1-R*0.65*vnoise(s*11+l*7.3+50,8.7+ti));
+          const wob=R*0.06*(vnoise(s*5+l*5.1,ti*2.3+0.5)-0.5)*2;
+          const wy=R*0.05*(vnoise(s*7+l*3.3,11.7+ti)-0.5)*2;
           let fx=dy*side[2]-dz*side[1], fy=dz*side[0]-dx*side[2], fz=dx*side[1]-dy*side[0];
           const fl=Math.hypot(fx,fy,fz)||1; fx/=fl; fy/=fl; fz/=fl;
           const fold=-0.35*w; // slight trough down the center of each leaf
-          gp.push(px-side[0]*w,py-side[1]*w,pz-side[2]*w, px+fx*fold,py+fy*fold,pz+fz*fold, px+side[0]*w,py+side[1]*w,pz+side[2]*w);
+          gp.push(
+            px-side[0]*(wl-wob)+fx*wy, py-side[1]*(wl-wob)+fy*wy, pz-side[2]*(wl-wob)+fz*wy,
+            px+side[0]*wob+fx*(fold+wy), py+side[1]*wob+fy*(fold+wy), pz+side[2]*wob+fz*(fold+wy),
+            px+side[0]*(wr+wob)+fx*wy, py+side[1]*(wr+wob)+fy*wy, pz+side[2]*(wr+wob)+fz*wy);
           let c=mix(leafDark,leafLight,smooth(0,0.8,s));
-          c=mix(c,leafTip,smooth(0.9,1,s)*0.7);
+          c=mix(c,leafTip,smooth(0.9-0.3*R,1,s)*0.8);
           const m=scale3(c,1.12);
           gc.push(c[0],c[1],c[2], m[0],m[1],m[2], c[0],c[1],c[2]);
         }
@@ -316,7 +352,7 @@
         g.setAttribute('position',new THREE.Float32BufferAttribute(gp,3));
         g.setAttribute('color',new THREE.Float32BufferAttribute(gc,3));
         g.computeVertexNormals();
-        B.add(g,{twoSided:true});
+        B.add(g,{twoSided:true, weight:Math.pow(0.01,R), rough:R*0.07});
       }
     });
     return B.finish();
@@ -381,7 +417,7 @@
   }
 
   const BUILDERS = { pineapple: buildPineapple, roadside: buildRoadside };
-  const CAMERA_DEFAULTS = { pineapple:{theta:0.6,phi:1.38}, roadside:{theta:0.75,phi:1.2} };
+  const CAMERA_DEFAULTS = { pineapple:{theta:0.6,phi:1.38}, roadside:{theta:0.75,phi:1.2}, loaded:{theta:0.6,phi:0.95} };
 
   /* ------------------------------------------------------------------ */
   /* "Capture": area-weighted surface sampling from the reference model  */
@@ -406,7 +442,9 @@
       const o=lo*9;
       const r1=Math.sqrt(rng()), r2=rng();
       const wa=1-r1, wb=r1*(1-r2), wc=r1*r2;
-      const x=wa*P[o]+wb*P[o+3]+wc*P[o+6], y=wa*P[o+1]+wb*P[o+4]+wc*P[o+7], z=wa*P[o+2]+wb*P[o+5]+wc*P[o+8];
+      let x=wa*P[o]+wb*P[o+3]+wc*P[o+6], y=wa*P[o+1]+wb*P[o+4]+wc*P[o+7], z=wa*P[o+2]+wb*P[o+5]+wc*P[o+8];
+      const amp=src.tr[lo];
+      if (amp>0){ x+=(rng()-0.5)*2*amp; y+=(rng()-0.5)*2*amp; z+=(rng()-0.5)*2*amp; }
       let nx=wa*NR[o]+wb*NR[o+3]+wc*NR[o+6], ny=wa*NR[o+1]+wb*NR[o+4]+wc*NR[o+7], nz=wa*NR[o+2]+wb*NR[o+5]+wc*NR[o+8];
       const nl=Math.hypot(nx,ny,nz)||1; nx/=nl; ny/=nl; nz/=nl;
       const cr=wa*CL[o]+wb*CL[o+3]+wc*CL[o+6], cg=wa*CL[o+1]+wb*CL[o+4]+wc*CL[o+7], cb=wa*CL[o+2]+wb*CL[o+5]+wc*CL[o+8];
@@ -477,67 +515,105 @@
       }`
   });
 
-  // Gaussian splats: 3D covariance projected to a 2D screen-space ellipse (EWA splatting)
+  // Gaussian splats: 3D covariance projected to a 2D screen-space ellipse (EWA splatting).
+  // The projection lives in one shared function so the demo material and the big-file material render identically.
+  const SPLAT_DECL = `
+    uniform vec2 uViewport; uniform float uScale; uniform float uNoise;
+    varying vec4 vColor; varying vec2 vUV;
+    ${NOISE_GLSL}
+    void project(vec3 center, vec3 aA, vec3 aB, vec3 aC, vec4 color){
+      vec3 c = center + (hash3(center) - 0.5) * 2.0 * uNoise;
+      vec4 vp = modelViewMatrix * vec4(c,1.0);
+      float d = -vp.z;
+      if (d < 0.05) { gl_Position = vec4(2.0,2.0,2.0,1.0); return; }
+      float fx = projectionMatrix[0][0] * uViewport.x * 0.5;
+      float fy = projectionMatrix[1][1] * uViewport.y * 0.5;
+      mat3 W = mat3(modelViewMatrix);
+      vec3 a = W * (aA * uScale);
+      vec3 b = W * (aB * uScale);
+      vec3 e = W * (aC * uScale);
+      vec3 j1 = vec3(fx/d, 0.0, fx*vp.x/(d*d));
+      vec3 j2 = vec3(0.0, fy/d, fy*vp.y/(d*d));
+      float a1 = dot(j1,a), a2 = dot(j2,a);
+      float b1 = dot(j1,b), b2 = dot(j2,b);
+      float e1 = dot(j1,e), e2 = dot(j2,e);
+      float c00 = a1*a1 + b1*b1 + e1*e1 + 0.3;
+      float c01 = a1*a2 + b1*b2 + e1*e2;
+      float c11 = a2*a2 + b2*b2 + e2*e2 + 0.3;
+      float mid = 0.5*(c00 + c11);
+      float rad = length(vec2(0.5*(c00 - c11), c01));
+      float l1 = mid + rad;
+      float l2 = max(mid - rad, 0.05);
+      vec2 vv = vec2(c01, l1 - c00);
+      float vl = length(vv);
+      vec2 v1 = vl > 1e-6 ? vv / vl : vec2(1.0,0.0);
+      vec2 v2 = vec2(-v1.y, v1.x);
+      float r1 = min(3.0*sqrt(l1), 1024.0);
+      float r2 = min(3.0*sqrt(l2), 1024.0);
+      vec2 off = (position.x*r1)*v1 + (position.y*r2)*v2;
+      vUV = position.xy * 3.0;
+      vColor = color;
+      vec4 clip = projectionMatrix * vp;
+      clip.xy += off * 2.0 / uViewport * clip.w;
+      gl_Position = clip;
+    }`;
+  const SPLAT_FRAG = `
+    uniform float uDebug;
+    varying vec4 vColor; varying vec2 vUV;
+    void main(){
+      float r2 = dot(vUV,vUV);
+      if (r2 > 9.0) discard;
+      float alpha = vColor.a * exp(-0.5*r2);
+      vec3 col = vColor.rgb;
+      if (uDebug > 0.5){
+        float ring = smoothstep(0.10, 0.0, abs(sqrt(r2) - 1.0));
+        alpha = max(ring*0.95, alpha*0.25);
+        col = mix(col, vec3(1.0), ring);
+      }
+      if (alpha < 0.004) discard;
+      gl_FragColor = vec4(col, alpha);
+    }`;
+  const splatUniforms = () => ({ uViewport:{value:new THREE.Vector2(1,1)}, uScale:{value:1}, uNoise:{value:0}, uDebug:{value:0} });
+
+  // Demo scene: per-splat attributes
   const splatMat = new THREE.ShaderMaterial({
-    uniforms:{ uViewport:{value:new THREE.Vector2(1,1)}, uScale:{value:1}, uNoise:{value:0}, uDebug:{value:0} },
+    uniforms: splatUniforms(),
     transparent:true, depthTest:false, depthWrite:false,
     vertexShader: `
       attribute vec3 aCenter; attribute vec3 aA; attribute vec3 aB; attribute vec3 aC; attribute vec4 aColor;
-      uniform vec2 uViewport; uniform float uScale; uniform float uNoise;
-      varying vec4 vColor; varying vec2 vUV;
-      ${NOISE_GLSL}
+      ${SPLAT_DECL}
+      void main(){ project(aCenter, aA, aB, aC, aColor); }`,
+    fragmentShader: SPLAT_FRAG
+  });
+
+  // Loaded files: splat data sits in a float texture (3 texels per splat) and each instance only carries an
+  // index. That lets a worker re-sort millions of splats without us re-uploading any splat data.
+  //   texel 0: x y z, rgb packed as r + g*256 + b*65536
+  //   texel 1: quaternion w x y z (normalized)
+  //   texel 2: sigma x y z (already exp'd), opacity (already sigmoid'd)
+  const TEXW = 4096;
+  const splatTexMat = new THREE.ShaderMaterial({
+    uniforms: Object.assign(splatUniforms(), { uTex:{value:null} }),
+    transparent:true, depthTest:false, depthWrite:false,
+    vertexShader: `
+      attribute float aIdx;
+      uniform highp sampler2D uTex;
+      ${SPLAT_DECL}
       void main(){
-        vec3 c = aCenter + (hash3(aCenter) - 0.5) * 2.0 * uNoise;
-        vec4 vp = modelViewMatrix * vec4(c,1.0);
-        float d = -vp.z;
-        if (d < 0.05) { gl_Position = vec4(2.0,2.0,2.0,1.0); return; }
-        float fx = projectionMatrix[0][0] * uViewport.x * 0.5;
-        float fy = projectionMatrix[1][1] * uViewport.y * 0.5;
-        mat3 W = mat3(modelViewMatrix);
-        vec3 a = W * (aA * uScale);
-        vec3 b = W * (aB * uScale);
-        vec3 e = W * (aC * uScale);
-        vec3 j1 = vec3(fx/d, 0.0, fx*vp.x/(d*d));
-        vec3 j2 = vec3(0.0, fy/d, fy*vp.y/(d*d));
-        float a1 = dot(j1,a), a2 = dot(j2,a);
-        float b1 = dot(j1,b), b2 = dot(j2,b);
-        float e1 = dot(j1,e), e2 = dot(j2,e);
-        float c00 = a1*a1 + b1*b1 + e1*e1 + 0.3;
-        float c01 = a1*a2 + b1*b2 + e1*e2;
-        float c11 = a2*a2 + b2*b2 + e2*e2 + 0.3;
-        float mid = 0.5*(c00 + c11);
-        float rad = length(vec2(0.5*(c00 - c11), c01));
-        float l1 = mid + rad;
-        float l2 = max(mid - rad, 0.05);
-        vec2 vv = vec2(c01, l1 - c00);
-        float vl = length(vv);
-        vec2 v1 = vl > 1e-6 ? vv / vl : vec2(1.0,0.0);
-        vec2 v2 = vec2(-v1.y, v1.x);
-        float r1 = min(3.0*sqrt(l1), 1024.0);
-        float r2 = min(3.0*sqrt(l2), 1024.0);
-        vec2 off = (position.x*r1)*v1 + (position.y*r2)*v2;
-        vUV = position.xy * 3.0;
-        vColor = aColor;
-        vec4 clip = projectionMatrix * vp;
-        clip.xy += off * 2.0 / uViewport * clip.w;
-        gl_Position = clip;
+        int t = int(aIdx + 0.5) * 3;
+        vec4 t0 = texelFetch(uTex, ivec2(t % ${TEXW}, t / ${TEXW}), 0);
+        vec4 t1 = texelFetch(uTex, ivec2((t+1) % ${TEXW}, (t+1) / ${TEXW}), 0);
+        vec4 t2 = texelFetch(uTex, ivec2((t+2) % ${TEXW}, (t+2) / ${TEXW}), 0);
+        float cp = t0.w;
+        float cb = floor(cp / 65536.0); cp -= cb * 65536.0;
+        float cg = floor(cp / 256.0);   float cr = cp - cg * 256.0;
+        float qw = t1.x, qx = t1.y, qy = t1.z, qz = t1.w;
+        vec3 c0 = vec3(1.0 - 2.0*(qy*qy + qz*qz), 2.0*(qx*qy + qw*qz), 2.0*(qx*qz - qw*qy));
+        vec3 c1 = vec3(2.0*(qx*qy - qw*qz), 1.0 - 2.0*(qx*qx + qz*qz), 2.0*(qy*qz + qw*qx));
+        vec3 c2 = vec3(2.0*(qx*qz + qw*qy), 2.0*(qy*qz - qw*qx), 1.0 - 2.0*(qx*qx + qy*qy));
+        project(t0.xyz, c0*t2.x, c1*t2.y, c2*t2.z, vec4(cr, cg, cb, 255.0*t2.w) / 255.0);
       }`,
-    fragmentShader: `
-      uniform float uDebug;
-      varying vec4 vColor; varying vec2 vUV;
-      void main(){
-        float r2 = dot(vUV,vUV);
-        if (r2 > 9.0) discard;
-        float alpha = vColor.a * exp(-0.5*r2);
-        vec3 col = vColor.rgb;
-        if (uDebug > 0.5){
-          float ring = smoothstep(0.10, 0.0, abs(sqrt(r2) - 1.0));
-          alpha = max(ring*0.95, alpha*0.25);
-          col = mix(col, vec3(1.0), ring);
-        }
-        if (alpha < 0.004) discard;
-        gl_FragColor = vec4(col, alpha);
-      }`
+    fragmentShader: SPLAT_FRAG
   });
 
   const matTex   = new THREE.MeshBasicMaterial({ vertexColors:true, side:THREE.DoubleSide, polygonOffset:true, polygonOffsetFactor:1, polygonOffsetUnits:1 });
@@ -552,15 +628,15 @@
   /* App state                                                           */
   /* ------------------------------------------------------------------ */
   const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const S = { object:'pineapple', view:'compare', density:15, noise:0, meshDetail:50, meshStyle:'edges', pointSize:2.5, splatSize:1, outlines:false, auto:!reduced };
-  let active = ['mesh','points','splat'];
-  let full = null, samples = null, meshData = null;
+  const S = { object:'pineapple', view:'compare', density:15, noise:0, rough:75, meshDetail:50, meshStyle:'edges', pointSize:2.5, splatSize:1, outlines:false, auto:!reduced };
+  let active = ['points','mesh','splat'];
+  let full = null, samples = null, meshData = null, loaded = null;
   let liveSplat = null, order = null, depth = null, counts = new Uint32Array(65537);
   let lastFwd = new THREE.Vector3(9,9,9), lastK = -1, sortDirty = true;
   let dragging = false;
 
-  const kSamples = () => Math.max(100, Math.round(MAXN * S.density / 100));
-  const noiseWorld = () => (S.noise/100) * (full ? full.radius : 1) * 0.03;
+  const kSamples = () => { const n = loaded ? loaded.N : MAXN; return Math.max(100, Math.round(n * S.density / 100)); };
+  const noiseWorld = () => (S.noise/100) * (full ? (full.noiseBase !== undefined ? full.noiseBase : full.radius*0.03) : 1);
 
   /* ------------------------------------------------------------------ */
   /* Build / rebuild scene content                                       */
@@ -591,8 +667,47 @@
     }
   }
 
+  // A mesh rebuilt from sparse points can't resolve thin leaves: patches go missing and what's left
+  // merges into a lumpy shell. Leaf triangles are tagged via src.tr > 0.
+  function degradeMesh(src){
+    const R=S.rough/100;
+    if (R<=0) return src;
+    const Cx=0, Cy=1.6, Cz=0, ax=0.7, ay=0.95, az=0.7;
+    const B=Math.min(1,R*1.4), dropT=R*0.8;
+    const P=src.pos, T=src.tw.length;
+    const pos=[], nor=[], col=[], tw=[], tr=[];
+    const blob=(x,y,z)=>{
+      const dx=x-Cx, dy=y-Cy, dz=z-Cz, len=Math.hypot(dx,dy,dz)||1e-6;
+      const nx=dx/len, ny=dy/len, nz=dz/len;
+      const e=1/Math.sqrt((nx/ax)*(nx/ax)+(ny/ay)*(ny/ay)+(nz/az)*(nz/az));
+      const lump=1+0.35*((vnoise(nx*2.2+3,ny*2.2)+vnoise(nz*2.2+7,ny*2.2+1))-1);
+      const k=B*smooth(0.95,1.35,y);
+      return [lerp(x,Cx+nx*e*lump,k), lerp(y,Cy+ny*e*lump,k), lerp(z,Cz+nz*e*lump,k)];
+    };
+    for (let t=0;t<T;t++){
+      const o=t*9;
+      if (src.tr[t]<=0){
+        for (let i=0;i<9;i++){ pos.push(P[o+i]); nor.push(src.nor[o+i]); col.push(src.col[o+i]); }
+      } else {
+        const cx=(P[o]+P[o+3]+P[o+6])/3, cy=(P[o+1]+P[o+4]+P[o+7])/3, cz=(P[o+2]+P[o+5]+P[o+8])/3;
+        if (vnoise(cx*3.5+11, cy*3.5+cz*2.7) < dropT) continue; // missing patch
+        const a=blob(P[o],P[o+1],P[o+2]), b=blob(P[o+3],P[o+4],P[o+5]), c=blob(P[o+6],P[o+7],P[o+8]);
+        const ux=b[0]-a[0], uy=b[1]-a[1], uz=b[2]-a[2], vx=c[0]-a[0], vy=c[1]-a[1], vz=c[2]-a[2];
+        let nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx;
+        const nl=Math.hypot(nx,ny,nz)||1; nx/=nl; ny/=nl; nz/=nl;
+        pos.push(...a,...b,...c);
+        nor.push(nx,ny,nz,nx,ny,nz,nx,ny,nz);
+        for (let i=0;i<9;i++) col.push(src.col[o+i]);
+      }
+      tw.push(src.tw[t]); tr.push(src.tr[t]);
+    }
+    return { pos:new Float32Array(pos), nor:new Float32Array(nor), col:new Float32Array(col),
+             tw:new Float32Array(tw), tr:new Float32Array(tr), center:src.center, radius:src.radius };
+  }
+
   function rebuildMeshData(){
-    meshData = S.meshDetail >= 100 ? full : BUILDERS[S.object](S.meshDetail/100);
+    const base = S.meshDetail >= 100 ? full : BUILDERS[S.object](S.meshDetail/100);
+    meshData = S.object==='pineapple' ? degradeMesh(base) : base;
     rebuildMeshObjects();
     updateStats();
   }
@@ -633,18 +748,28 @@
   function applyDensity(){
     const k=kSamples();
     if (pointsObj) pointsObj.geometry.setDrawRange(0,k);
-    if (splatGeo) splatGeo.instanceCount=k;
+    if (splatGeo && !loaded) splatGeo.instanceCount=k;
     sortDirty = true;
     updateStats();
   }
 
-  function loadObject(name){
-    S.object=name;
-    full = BUILDERS[name](1);
+  function regenerate(){
+    full = BUILDERS[S.object](1);
     samples = sampleSurface(full, MAXN, 1234);
     rebuildSampleObjects();
     rebuildMeshData();
-    resetCamera();
+  }
+
+  function setPressed(id, v){
+    $(id).querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.v===v ? 'true':'false'));
+  }
+
+  function loadObject(name){
+    unloadPly();
+    S.object=name;
+    regenerate();
+    setPressed('seg-object', name);
+    setView(S.view);
   }
 
   /* Back-to-front counting sort of the visible splats along the view direction */
@@ -702,7 +827,7 @@
 
   function resetCamera(){
     if (!full) return;
-    const d=CAMERA_DEFAULTS[S.object];
+    const d=loaded ? CAMERA_DEFAULTS.loaded : CAMERA_DEFAULTS[S.object];
     cam.theta=d.theta; cam.phi=d.phi;
     cam.target.set(full.center[0],full.center[1],full.center[2]);
     cam.radius=fitRadius(minPanelAspect());
@@ -751,7 +876,7 @@
   const endPointer = e=>{ pointers.delete(e.pointerId); pinchPrev=0; if(!pointers.size) dragging=false; };
   stage.addEventListener('pointerup', endPointer);
   stage.addEventListener('pointercancel', endPointer);
-  const clampRadius = r => full ? Math.min(full.radius*12, Math.max(full.radius*0.12, r)) : r;
+  const clampRadius = r => full ? Math.min(full.radius*12, Math.max(full.minZoom !== undefined ? full.minZoom : full.radius*0.12, r)) : r;
   stage.addEventListener('wheel', e=>{
     e.preventDefault();
     cam.radius = clampRadius(cam.radius*Math.exp(e.deltaY*0.0012));
@@ -797,23 +922,30 @@
       const tokens=el.dataset.for.split(' ');
       el.hidden = !tokens.some(t=>active.includes(t));
     });
+    document.querySelectorAll('[data-scene]').forEach(el=>{ el.hidden = !!loaded || el.dataset.scene !== S.object; });
+    document.querySelectorAll('[data-loaded]').forEach(el=>{ el.hidden = !loaded; });
+    document.querySelector('#seg-view [data-v="mesh"]').disabled = !!loaded;
     $('about').textContent = ABOUT[S.view];
   }
 
   function updateStats(){
-    if (!meshData || !samples) return;
+    if (!loaded && (!meshData || !samples)) return;
     const k=kSamples();
-    const tris=meshData.tw.length, verts=Math.round(tris*0.55);
     const rows = {
-      mesh:   [['Triangles',fmt(tris)],['Est. size',fmtBytes(verts*15+tris*13)]],
       points: [['Points',fmt(k)],['Est. size',fmtBytes(k*26)]],
-      splat:  [['Splats',fmt(k)],['Est. size',fmtBytes(k*248)]]
+      splat:  [['Splats',fmt(k)],['Est. size',fmtBytes(k*(loaded ? loaded.stride*4 : 248))]]
     };
+    if (meshData){
+      const tris=meshData.tw.length, verts=Math.round(tris*0.55);
+      rows.mesh=[['Triangles',fmt(tris)],['Est. size',fmtBytes(verts*15+tris*13)]];
+    }
     panelsEl.querySelectorAll('.panel').forEach(p=>{
-      p.querySelector('.stats').innerHTML = rows[p.dataset.mode].map(r=>`<div><dt>${r[0]}</dt><dd>${r[1]}</dd></div>`).join('');
+      const r=rows[p.dataset.mode]; if(!r) return;
+      p.querySelector('.stats').innerHTML = r.map(x=>`<div><dt>${x[0]}</dt><dd>${x[1]}</dd></div>`).join('');
     });
     $('density-out').textContent = fmt(k) + ' samples';
     $('noise-out').textContent = S.noise + '%';
+    $('rough-out').textContent = S.rough + '%';
     $('meshDetail-out').textContent = S.meshDetail + '%';
     $('pointSize-out').textContent = S.pointSize + ' px';
     $('splatSize-out').textContent = S.splatSize.toFixed(2) + 'x';
@@ -821,7 +953,9 @@
 
   function setView(v){
     S.view=v;
-    active = v==='compare' ? ['mesh','points','splat'] : [v];
+    if (loaded && v==='mesh') v='compare';
+    S.view=v; setPressed('seg-view', v);
+    active = v==='compare' ? (loaded ? ['points','splat'] : ['points','mesh','splat']) : [v];
     buildPanels(); applyVisibility(); updateStats();
     resetCamera();
   }
@@ -830,6 +964,11 @@
   bindSeg('seg-view', setView);
 
   let meshTimer=null;
+  let roughTimer=null;
+  $('rough').addEventListener('input', e=>{
+    S.rough=+e.target.value; updateStats();
+    clearTimeout(roughTimer); roughTimer=setTimeout(regenerate,150);
+  });
   $('density').addEventListener('input', e=>{ S.density=+e.target.value; applyDensity(); });
   $('noise').addEventListener('input', e=>{ S.noise=+e.target.value; updateStats(); });
   $('meshDetail').addEventListener('input', e=>{
@@ -847,6 +986,249 @@
   /* ------------------------------------------------------------------ */
   /* Render loop                                                         */
   /* ------------------------------------------------------------------ */
+  /* ------------------------------------------------------------------ */
+  /* Loader: 3D Gaussian Splatting .ply                                  */
+  /* ------------------------------------------------------------------ */
+  const DEFAULT_STATUS = 'Open or drop a 3D Gaussian Splatting .ply to view your own capture.';
+
+  function parsePlyHeader(text){
+    const endTag='end_header\n', ei=text.indexOf(endTag);
+    if (ei<0) throw new Error('This does not look like a PLY file (no end_header found).');
+    const lines=text.slice(0,ei).split(/\r?\n/);
+    if (lines[0].trim()!=='ply') throw new Error('This does not look like a PLY file.');
+    const fmtLine=lines.find(l=>l.startsWith('format'));
+    if (!fmtLine || !fmtLine.includes('binary_little_endian')) throw new Error('Only binary little-endian PLY files are supported.');
+    let N=0, inVertex=false, elementIndex=-1, vertexIndex=-1;
+    const props=[];
+    for (const l of lines){
+      const p=l.trim().split(/\s+/);
+      if (p[0]==='element'){
+        elementIndex++;
+        inVertex = p[1]==='vertex';
+        if (inVertex){ N=+p[2]; vertexIndex=elementIndex; }
+      } else if (p[0]==='property' && inVertex){
+        props.push({type:p[1], name:p[2]});
+      }
+    }
+    if (vertexIndex!==0) throw new Error('Expected the vertex element to come first in the file.');
+    const bad=props.find(p=>p.type!=='float' && p.type!=='float32');
+    if (bad) throw new Error('Unsupported property type "' + bad.type + '" (' + bad.name + '). All vertex properties must be float32.');
+    const idx={}; props.forEach((p,i)=>{ idx[p.name]=i; });
+    const need=['x','y','z','f_dc_0','f_dc_1','f_dc_2','opacity','scale_0','scale_1','scale_2','rot_0','rot_1','rot_2','rot_3'];
+    const missing=need.filter(n=>!(n in idx));
+    if (missing.length){
+      throw new Error('This is not a 3D Gaussian Splatting PLY (missing ' + missing.slice(0,4).join(', ') + (missing.length>4?', ...':'') + '). Only splat PLYs are supported right now.');
+    }
+    return { N, stride:props.length, idx, headerBytes:ei+endTag.length };
+  }
+
+  // Shuffles the splats (so the density slider shows an even random subset), recenters them on the origin,
+  // decodes 3DGS parameter encodings, and packs everything for the GPU.
+  function packSplats(F, N, stride, idx, texW){
+    // Robust bounds from a random sample: files like this usually contain floaters far from the scene.
+    const rs=mulberry32(99), M=Math.min(N,100000);
+    const sx=new Float32Array(M), sy=new Float32Array(M), sz=new Float32Array(M);
+    for (let i=0;i<M;i++){ const o=Math.floor(rs()*N)*stride; sx[i]=F[o+idx.x]; sy[i]=F[o+idx.y]; sz[i]=F[o+idx.z]; }
+    sx.sort(); sy.sort(); sz.sort();
+    const lo=[sx[Math.floor(M*0.02)],sy[Math.floor(M*0.02)],sz[Math.floor(M*0.02)]];
+    const hi=[sx[Math.floor(M*0.98)],sy[Math.floor(M*0.98)],sz[Math.floor(M*0.98)]];
+    const mid=[(lo[0]+hi[0])/2,(lo[1]+hi[1])/2,(lo[2]+hi[2])/2];
+    const ext=[hi[0]-lo[0],hi[1]-lo[1],hi[2]-lo[2]];
+    const radius=0.5*Math.hypot(ext[0],ext[1],ext[2]);
+
+    const perm=new Uint32Array(N); for (let i=0;i<N;i++) perm[i]=i;
+    let st=0x9e3779b9|0;
+    for (let i=N-1;i>0;i--){
+      st^=st<<13; st^=st>>>17; st^=st<<5;
+      const j=(st>>>0)%(i+1); const t=perm[i]; perm[i]=perm[j]; perm[j]=t;
+    }
+
+    const H=Math.ceil(N*3/texW);
+    const pos=new Float32Array(N*3), col=new Uint8Array(N*3), tex=new Float32Array(texW*H*4);
+    const C0=0.28209479177387814, sig=new Float32Array(Math.min(N,20001));
+    const q=v=>Math.max(0,Math.min(255,Math.round((0.5+C0*v)*255)));
+    for (let i=0;i<N;i++){
+      const o=perm[i]*stride;
+      const x=F[o+idx.x]-mid[0], y=F[o+idx.y]-mid[1], z=F[o+idx.z]-mid[2];
+      const r=q(F[o+idx.f_dc_0]), g=q(F[o+idx.f_dc_1]), b=q(F[o+idx.f_dc_2]);
+      pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
+      col[i*3]=r; col[i*3+1]=g; col[i*3+2]=b;
+      const t=i*12;
+      tex[t]=x; tex[t+1]=y; tex[t+2]=z; tex[t+3]=r+g*256+b*65536;
+      let qw=F[o+idx.rot_0], qx=F[o+idx.rot_1], qy=F[o+idx.rot_2], qz=F[o+idx.rot_3];
+      const ql=Math.hypot(qw,qx,qy,qz)||1; // the file stores unnormalized quaternions
+      tex[t+4]=qw/ql; tex[t+5]=qx/ql; tex[t+6]=qy/ql; tex[t+7]=qz/ql;
+      const s0=Math.exp(F[o+idx.scale_0]), s1=Math.exp(F[o+idx.scale_1]), s2=Math.exp(F[o+idx.scale_2]);
+      let op=1/(1+Math.exp(-F[o+idx.opacity])); if (!(op>=0)) op=0;
+      tex[t+8]=s0; tex[t+9]=s1; tex[t+10]=s2; tex[t+11]=op;
+      if (i<sig.length) sig[i]=(s0+s1+s2)/3;
+    }
+    sig.sort();
+    return { pos, col, tex, H, ext, radius, medianSigma:sig[Math.floor(sig.length/2)] };
+  }
+
+  // Back-to-front counting sort. Also stringified into the worker, so it must stay self-contained.
+  function sortCore(pos, N, k, dx, dy, dz, depth, keys, counts, out){
+    let mn=Infinity, mx=-Infinity;
+    for (let i=0;i<k;i++){
+      const j=i*3, d=pos[j]*dx+pos[j+1]*dy+pos[j+2]*dz;
+      depth[i]=d; if(d<mn)mn=d; if(d>mx)mx=d;
+    }
+    const sc=65535/((mx-mn)||1);
+    counts.fill(0);
+    for (let i=0;i<k;i++){ const key=((mx-depth[i])*sc)|0; keys[i]=key; counts[key+1]++; }
+    for (let b=0;b<65536;b++) counts[b+1]+=counts[b];
+    for (let i=0;i<k;i++){ out[counts[keys[i]]++]=i; }
+  }
+
+  const tick = () => new Promise(r=>setTimeout(r,30));
+
+  function unloadPly(){
+    if (!loaded) return;
+    if (loaded.worker) loaded.worker.terminate();
+    if (loaded.texture) loaded.texture.dispose();
+    loaded=null;
+    camera.near=0.05; camera.far=500;
+    S.density=15; $('density').value=15;
+    $('demo').hidden=true;
+    $('status').textContent=DEFAULT_STATUS;
+  }
+
+  async function loadPly(file){
+    const say=m=>{ $('status').textContent=m; };
+    try{
+      const t0=performance.now();
+      say('Reading header...');
+      const head=new TextDecoder('latin1').decode(await file.slice(0,65536).arrayBuffer());
+      const h=parsePlyHeader(head);
+      const maxTex=renderer.capabilities.maxTextureSize;
+      const H=Math.ceil(h.N*3/TEXW);
+      if (TEXW>maxTex || H>maxTex) throw new Error('This GPU can\'t hold ' + fmt(h.N) + ' splats (max texture size ' + maxTex + ').');
+
+      say('Reading ' + fmt(h.N) + ' splats (' + fmtBytes(file.size) + ')...');
+      await tick();
+      const body=await file.slice(h.headerBytes, h.headerBytes+h.N*h.stride*4).arrayBuffer();
+      if (body.byteLength < h.N*h.stride*4) throw new Error('The file is truncated.');
+      const F=new Float32Array(body);
+
+      say('Packing for the GPU...');
+      await tick();
+      const P=packSplats(F, h.N, h.stride, h.idx, TEXW);
+      const N=h.N;
+
+      // Swap out whatever is on screen
+      unloadPly();
+      disposeObj(pointsObj); disposeObj(splatObj);
+      if (splatGeo) splatGeo.dispose();
+      while (meshGroup.children.length){ const c=meshGroup.children.pop(); c.geometry && c.geometry.dispose(); }
+      meshData=null; samples=null;
+
+      const pg=new THREE.BufferGeometry();
+      pg.setAttribute('position',new THREE.BufferAttribute(P.pos,3));
+      pg.setAttribute('aCol',new THREE.BufferAttribute(P.col,3,true));
+      pointsObj=new THREE.Points(pg,pointMat); pointsObj.frustumCulled=false;
+      scenes.points.add(pointsObj);
+
+      const texture=new THREE.DataTexture(P.tex,TEXW,P.H,THREE.RGBAFormat,THREE.FloatType);
+      texture.minFilter=THREE.NearestFilter; texture.magFilter=THREE.NearestFilter;
+      texture.generateMipmaps=false; texture.flipY=false; texture.needsUpdate=true;
+      splatTexMat.uniforms.uTex.value=texture;
+
+      const aIdx=new THREE.InstancedBufferAttribute(new Float32Array(N),1);
+      aIdx.setUsage(THREE.DynamicDrawUsage);
+      splatGeo=new THREE.InstancedBufferGeometry();
+      splatGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-1,-1,0, 1,-1,0, 1,1,0, -1,1,0]),3));
+      splatGeo.setIndex([0,1,2, 0,2,3]);
+      splatGeo.setAttribute('aIdx', aIdx);
+      splatGeo.instanceCount=0; // nothing draws until the first depth sort lands
+      splatObj=new THREE.Mesh(splatGeo,splatTexMat); splatObj.frustumCulled=false;
+      scenes.splat.add(splatObj);
+
+      const L={ name:file.name, N, stride:h.stride, pos:P.pos, aIdx, texture, worker:null,
+                pending:false, lastDir:new THREE.Vector3(9,9,9), lastK:-1, depthM:null, keysM:null, countsM:null };
+      try{
+        const src=sortCore.toString()+`
+          let pos=null, depth=null, keys=null; const counts=new Uint32Array(65537);
+          onmessage=e=>{
+            const m=e.data;
+            if (m.type==='init'){ pos=m.pos; depth=new Float32Array(m.n); keys=new Uint16Array(m.n); }
+            else { const out=new Float32Array(m.k); sortCore(pos,m.n,m.k,m.dx,m.dy,m.dz,depth,keys,counts,out); postMessage({out},[out.buffer]); }
+          };`;
+        L.worker=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})));
+        L.worker.onmessage=e=>{ if (loaded===L) applySorted(L,e.data.out); };
+        const copy=P.pos.slice();
+        L.worker.postMessage({type:'init',pos:copy,n:N},[copy.buffer]);
+      }catch(err){ L.worker=null; }
+      loaded=L;
+
+      full={ center:[0,0,0], radius:P.radius, noiseBase:P.medianSigma*6, minZoom:P.radius*0.003 };
+      camera.near=Math.max(0.01,P.radius*0.0005); camera.far=P.radius*40;
+
+      // Smallest extent is most likely "up" for aerial captures
+      const e=P.ext;
+      $('orient').value = (e[2]<=e[0] && e[2]<=e[1]) ? 'zup' : 'ydown';
+
+      S.density=30; $('density').value=30;
+      S.pointSize=1.5; $('pointSize').value=1.5;
+      setPressed('seg-object','');
+      $('demo').hidden=false;
+      setView(S.view);   // rebuilds panels, switches off Mesh, shows loaded-file controls
+      applyOrientation();
+      say(file.name + ': ' + fmt(N) + ' splats loaded in ' + ((performance.now()-t0)/1000).toFixed(1) + ' s. Splats are shuffled, so the density slider shows an even random subset.');
+    }catch(err){
+      console.error(err);
+      say('Could not open file: ' + err.message);
+    }
+  }
+
+  function applySorted(L, out){
+    const k=out.length;
+    L.aIdx.array.set(out);
+    L.aIdx.updateRange.offset=0; L.aIdx.updateRange.count=k;
+    L.aIdx.needsUpdate=true;
+    splatGeo.instanceCount=k;
+    L.pending=false;
+  }
+
+  const _qInv = new THREE.Quaternion(), _dirM = new THREE.Vector3();
+  function requestSortLoaded(){
+    const L=loaded;
+    if (!L || L.pending || !splatObj) return;
+    camera.updateMatrixWorld();
+    camera.getWorldDirection(_fwd);
+    _dirM.copy(_fwd).applyQuaternion(_qInv.copy(splatObj.quaternion).invert()); // view direction in the file's own axes
+    const k=kSamples();
+    const moved=Math.abs(_dirM.x-L.lastDir.x)+Math.abs(_dirM.y-L.lastDir.y)+Math.abs(_dirM.z-L.lastDir.z) > 2e-4;
+    if (!moved && k===L.lastK) return;
+    L.lastDir.copy(_dirM); L.lastK=k; L.pending=true;
+    if (L.worker){
+      L.worker.postMessage({type:'sort',n:L.N,k,dx:_dirM.x,dy:_dirM.y,dz:_dirM.z});
+    } else {
+      // No worker available (blocked by the page's security policy): sort on the main thread
+      if (!L.depthM){ L.depthM=new Float32Array(L.N); L.keysM=new Uint16Array(L.N); L.countsM=new Uint32Array(65537); }
+      const out=new Float32Array(k);
+      sortCore(L.pos,L.N,k,_dirM.x,_dirM.y,_dirM.z,L.depthM,L.keysM,L.countsM,out);
+      applySorted(L,out);
+    }
+  }
+
+  function applyOrientation(){
+    if (!loaded) return;
+    const o=$('orient').value;
+    const rx = o==='zup' ? -Math.PI/2 : o==='ydown' ? Math.PI : 0;
+    [pointsObj,splatObj].forEach(m=>{ if(m) m.rotation.set(rx,0,0); });
+    loaded.lastK=-1;
+    resetCamera();
+  }
+
+  $('open').addEventListener('click', ()=>$('file').click());
+  $('file').addEventListener('change', e=>{ const f=e.target.files[0]; e.target.value=''; if(f) loadPly(f); });
+  $('demo').addEventListener('click', ()=>loadObject(S.object));
+  $('orient').addEventListener('change', applyOrientation);
+  ['dragenter','dragover'].forEach(t=>stage.addEventListener(t,e=>{ e.preventDefault(); stage.classList.add('drop'); }));
+  ['dragleave','drop'].forEach(t=>stage.addEventListener(t,e=>{ e.preventDefault(); stage.classList.remove('drop'); }));
+  stage.addEventListener('drop', e=>{ const f=e.dataTransfer.files[0]; if(f) loadPly(f); });
+
   function resize(){
     renderer.setSize(stage.clientWidth, stage.clientHeight, false);
   }
@@ -868,16 +1250,19 @@
     renderer.setScissorTest(true);
     renderer.setClearColor(0x12171c,1);
 
-    if (active.includes('splat')) maybeSort();
+    if (active.includes('splat')) { if (loaded) requestSortLoaded(); else maybeSort(); }
 
     pointMat.uniforms.uSize.value = S.pointSize;
     pointMat.uniforms.uPR.value = pr;
     const nw = noiseWorld();
     pointMat.uniforms.uNoise.value = nw;
-    splatMat.uniforms.uNoise.value = nw;
-    splatMat.uniforms.uDebug.value = S.outlines ? 1 : 0;
     // Fewer splats means each one has to cover more area
-    splatMat.uniforms.uScale.value = S.splatSize * Math.sqrt(MAXN / kSamples());
+    const scaleNow = S.splatSize * Math.sqrt((loaded ? loaded.N : MAXN) / kSamples());
+    [splatMat, splatTexMat].forEach(m=>{
+      m.uniforms.uNoise.value = nw;
+      m.uniforms.uDebug.value = S.outlines ? 1 : 0;
+      m.uniforms.uScale.value = scaleNow;
+    });
 
     const sr=stage.getBoundingClientRect();
     panelsEl.querySelectorAll('.panel').forEach(el=>{
@@ -890,6 +1275,7 @@
       renderer.clear();
       camera.aspect=w/h; camera.updateProjectionMatrix();
       splatMat.uniforms.uViewport.value.set(w*pr,h*pr);
+      splatTexMat.uniforms.uViewport.value.set(w*pr,h*pr);
       renderer.render(scenes[el.dataset.mode],camera);
     });
 
@@ -901,6 +1287,7 @@
   /* Go                                                                  */
   /* ------------------------------------------------------------------ */
   resize();
+  $('status').textContent = DEFAULT_STATUS;
   buildPanels();
   applyVisibility();
   loadObject('pineapple');
