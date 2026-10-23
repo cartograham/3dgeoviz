@@ -14,9 +14,28 @@
   body{
     font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
     color:var(--ink); background:var(--rail);
-    display:grid; grid-template-columns:330px 1fr; height:100vh; overflow:hidden;
+    display:grid; grid-template-columns:330px minmax(0,1fr); grid-template-rows:auto minmax(0,1fr);
+    grid-template-areas:"top top" "rail stage"; height:100vh; overflow:hidden;
   }
-  .rail{padding:22px 20px 28px; overflow-y:auto; border-right:1px solid var(--line)}
+  .topbar{grid-area:top; background:#fff; border-bottom:1px solid var(--line)}
+  .tb-main{display:grid; grid-template-columns:330px minmax(0,1fr); align-items:center; padding:10px 0}
+  .tb-left{padding:0 20px; min-width:0}
+  .tb-right{display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; gap:16px; padding-right:20px}
+  .tb-center{display:flex; align-items:center; justify-content:center; gap:28px}
+  .tb-data{justify-self:end}
+  .tb-sub{display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:10px 16px; padding:0 20px 10px}
+  .tb-title{margin:0; font-size:22px; line-height:1.2; font-weight:700; letter-spacing:-0.015em; white-space:nowrap}
+  .tb-group{display:flex; align-items:center; gap:8px}
+  .tb-label{font-size:12px; font-weight:600; color:var(--muted)}
+  .tb-label-main{font-size:15px; font-weight:700; color:var(--ink)}
+  .tb-group .seg button{padding:7px 12px}
+  .tb-group .btn{white-space:nowrap}
+  .tb-group select{padding:6px 8px; font:inherit; font-size:13px; border:1px solid #c3cbd2; border-radius:8px; background:#fff}
+  .tb-status{max-width:300px; margin:0; font-size:12px; line-height:1.3; color:var(--muted); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden}
+  .tb-status:empty{display:none}
+  .btn[aria-pressed="true"]{background:var(--ink); color:#fff; border-color:var(--ink)}
+  .btn[aria-pressed="true"]:hover{background:#2c3742; color:#fff}
+  .rail{grid-area:rail; padding:22px 20px 28px; overflow-y:auto; border-right:1px solid var(--line)}
   .rail h1{font-size:18px; line-height:1.25; margin:0 0 4px; letter-spacing:-0.01em}
   .rail .sub{margin:0 0 18px; color:var(--muted); font-size:13px}
   fieldset{border:0; margin:0 0 16px; padding:0}
@@ -56,7 +75,7 @@
   .group-title{margin:20px 0 10px; padding-top:14px; border-top:1px solid var(--line); font-size:12px; font-weight:600; color:var(--muted)}
   .foot{margin-top:20px; font-size:12px; color:var(--muted)}
 
-  .stage{position:relative; background:#0b0e11; overflow:hidden; touch-action:none; cursor:grab; min-height:360px}
+  .stage{grid-area:stage; position:relative; background:#0b0e11; overflow:hidden; touch-action:none; cursor:grab; min-height:360px}
   .stage:active{cursor:grabbing}
   canvas{position:absolute; inset:0; width:100%; height:100%; display:block}
   .panels{position:absolute; inset:0; display:grid; gap:2px; pointer-events:none}
@@ -92,36 +111,52 @@
   .note.w{border-color:#f0a35e}
   .note.w .ic{color:#f0a35e}
   .stage.matrix-open{touch-action:auto; cursor:auto}
-  .matrix{position:absolute; inset:0; z-index:5; background:#0b0e11; color:#cbd5dc; overflow:auto; padding:22px 26px 28px; cursor:auto}
+  .matrix{
+    --mx-bg:#ffffff; --mx-text:#1a2128; --mx-strong:#0f1419; --mx-muted:#5f6b76; --mx-soft:#6b7783;
+    --mx-head:#f1f3f5; --mx-line:#e1e6ea; --mx-line-2:#c3cbd2; --mx-use:#2b353e;
+    --mx-good:#2fa66f; --mx-mid:#d3a22a; --mx-bad:#e0813a; --mx-icon:#44525e; --mx-icon-head:#1a2128;
+    position:absolute; inset:0; z-index:5; background:var(--mx-bg); color:var(--mx-text); overflow:auto; padding:22px 26px 28px; cursor:auto;
+  }
+  .matrix[data-theme="dark"]{
+    --mx-bg:#0b0e11; --mx-text:#cbd5dc; --mx-strong:#eef2f5; --mx-muted:#8f9ca7; --mx-soft:#9aa7b2;
+    --mx-head:#12171c; --mx-line:#1d252c; --mx-line-2:#36424d; --mx-use:#dbe3e9;
+    --mx-good:#5fcf9a; --mx-mid:#e3c66a; --mx-bad:#f0a35e; --mx-icon:#9fb4c4; --mx-icon-head:#cfe0ee;
+  }
   .m-head{display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; margin-bottom:14px}
-  .m-head h2{margin:0; font-size:18px; color:#eef2f5; letter-spacing:-0.01em}
-  .m-head p{margin:3px 0 0; font-size:13px; color:#8f9ca7}
-  .btn-dark{font:inherit; font-size:13px; padding:7px 12px; border-radius:8px; cursor:pointer; color:#dfe6eb; background:#151b21; border:1px solid #36424d}
-  .btn-dark:hover{background:#1c242b}
-  .btn-dark:focus-visible{outline:2px solid #6aa9ff; outline-offset:2px}
-  .legend{display:flex; gap:18px; flex-wrap:wrap; margin:0 0 14px; font-size:12px; color:#9aa7b2}
-  .legend .b{font-weight:400; color:#9aa7b2}
+  .m-head h2{margin:0; font-size:18px; color:var(--mx-strong); letter-spacing:-0.01em}
+  .m-head p{margin:3px 0 0; font-size:13px; color:var(--mx-muted)}
+  .m-theme{display:flex; border:1px solid var(--mx-line-2); border-radius:8px; overflow:hidden}
+  .m-theme button{display:inline-flex; align-items:center; gap:6px; border:0; background:transparent; color:var(--mx-text); font:inherit; font-size:13px; padding:6px 12px; cursor:pointer}
+  .m-theme button + button{border-left:1px solid var(--mx-line-2)}
+  .m-theme button[aria-pressed="true"]{background:var(--mx-strong); color:var(--mx-bg)}
+  .m-theme button:focus-visible{outline:2px solid #6aa9ff; outline-offset:-2px}
+  .m-theme .mi{flex:0 0 15px; width:15px; height:15px; color:currentColor}
+  .legend{display:flex; gap:18px; flex-wrap:wrap; margin:0 0 14px; font-size:12px; color:var(--mx-soft)}
+  .legend .b{font-weight:400; color:var(--mx-soft)}
   .mx{border-collapse:separate; border-spacing:0; width:100%; min-width:920px; font-size:13px}
-  .mx th, .mx td{padding:10px 12px; text-align:left; vertical-align:top; border-bottom:1px solid #1d252c}
-  .mx thead th{position:sticky; top:0; z-index:2; background:#12171c; color:#eef2f5; font-size:14px}
-  .mx thead th small{display:block; margin-top:2px; font-size:12px; font-weight:400; color:#8f9ca7}
-  .mx thead th:first-child, .mx tbody th{position:sticky; left:0; background:#0b0e11}
-  .mx thead th:first-child{z-index:3; background:#12171c}
-  .mx tbody th{color:#eef2f5; font-weight:600; width:17%; min-width:150px}
+  .mx th, .mx td{padding:10px 12px; text-align:left; vertical-align:top; border-bottom:1px solid var(--mx-line)}
+  .mx thead th{position:sticky; top:0; z-index:2; background:var(--mx-head); color:var(--mx-strong); font-size:14px}
+  .mx thead th small{display:block; margin-top:2px; font-size:12px; font-weight:400; color:var(--mx-muted)}
+  .mx thead th:first-child, .mx tbody th{position:sticky; left:0; background:var(--mx-bg)}
+  .mx thead th:first-child{z-index:3; background:var(--mx-head)}
+  .mx tbody th{color:var(--mx-strong); font-weight:600; width:17%; min-width:150px}
   .mx td{width:20.75%}
-  .mx tr.use td{color:#dbe3e9}
+  .mx tr.use td{color:var(--mx-use)}
   .mi{flex:0 0 18px; width:18px; height:18px; color:#9fb4c4}
+  .mx .mi{color:var(--mx-icon)}
   .hd, .rh{display:flex; gap:10px; align-items:flex-start}
-  .hd .mi{flex-basis:22px; width:22px; height:22px; margin-top:1px; color:#cfe0ee}
+  .hd .mi{flex-basis:22px; width:22px; height:22px; margin-top:1px}
+  .mx .hd .mi{color:var(--mx-icon-head)}
   .rh .mi{margin-top:1px}
-  .b{display:inline-flex; align-items:center; gap:7px; font-weight:600; color:#eef2f5}
+  .b{display:inline-flex; align-items:center; gap:7px; font-weight:600; color:var(--mx-strong)}
   .b i{flex:0 0 11px; width:11px; height:11px; border-radius:50%; border:2px solid; box-sizing:border-box}
-  .b.good i{border-color:#5fcf9a; background:#5fcf9a}
-  .b.mid i{border-color:#e3c66a; background:linear-gradient(90deg,#e3c66a 50%,transparent 50%)}
-  .b.bad i{border-color:#f0a35e; background:transparent}
-  .n{margin-top:3px; font-size:12px; line-height:1.4; color:#8f9ca7}
-  .m-take{margin:20px 0 6px; font-size:16px; font-weight:600; color:#eef2f5}
-  .m-foot{margin:0; font-size:12px; color:#7f8c97; max-width:900px}
+  .b.good i{border-color:var(--mx-good); background:var(--mx-good)}
+  .b.mid i{border-color:var(--mx-mid); background:linear-gradient(90deg,var(--mx-mid) 50%,transparent 50%)}
+  .b.bad i{border-color:var(--mx-bad); background:transparent}
+  .n{margin-top:3px; font-size:12px; line-height:1.4; color:var(--mx-muted)}
+  .m-note{margin:14px 0 0; font-size:12px; line-height:1.5; color:var(--mx-soft); max-width:900px}
+  .m-take{margin:20px 0 6px; font-size:16px; font-weight:600; color:var(--mx-strong)}
+  .m-foot{margin:0; font-size:12px; color:var(--mx-muted); max-width:900px}
   .hud{position:absolute; right:16px; top:14px; text-align:right; font-size:12px; color:#6f7c87; pointer-events:none; line-height:1.5}
   .hud b{color:#aab6bf; font-weight:600; font-variant-numeric:tabular-nums}
   .err{position:absolute; inset:0; display:grid; place-items:center; color:#cbd5dc; padding:30px; text-align:center}
@@ -131,41 +166,66 @@
   .status{margin:0 0 12px; font-size:12px; color:var(--muted); min-height:1.4em}
   .stage.drop{outline:2px dashed #6aa9ff; outline-offset:-10px}
 
+  @media (max-width:1180px){
+    .tb-main{grid-template-columns:1fr; row-gap:8px; padding:10px 20px}
+    .tb-left{padding:0}
+    .tb-right{grid-template-columns:1fr; justify-items:center; row-gap:8px; padding:0}
+    .tb-right > span{display:none}
+    .tb-center{flex-wrap:wrap}
+    .tb-data{justify-self:end}
+  }
   @media (max-width:860px){
-    body{grid-template-columns:1fr; grid-template-rows:68vh auto; height:auto; overflow:auto; order:0}
-    .stage{order:-1}
+    body{grid-template-columns:1fr; grid-template-rows:auto 68vh auto; grid-template-areas:"top" "stage" "rail"; height:auto; overflow:auto}
     .rail{border-right:0; border-top:1px solid var(--line)}
   }
 </style>
 </head>
 <body>
 
-<aside class="rail">
-  <h1>Reality Capture Approaches</h1>
-  <p class="sub">One surface rendered as a mesh, a point cloud, and a Gaussian splat.</p>
-
-  <fieldset>
-    <legend>Scene</legend>
-    <div class="seg" id="seg-object">
-      <button type="button" data-v="pineapple" aria-pressed="true">Pineapple</button>
-      <button type="button" data-v="roadside" aria-pressed="false">Roadside</button>
+<header class="topbar">
+  <div class="tb-main">
+    <div class="tb-left">
+      <h1 class="tb-title">Reality Capture Approaches</h1>
     </div>
-  </fieldset>
-
-  <fieldset>
-    <legend>View</legend>
-    <div class="seg" id="seg-view">
-      <button type="button" data-v="points" aria-pressed="false">Points</button>
-      <button type="button" data-v="mesh" aria-pressed="false">Mesh</button>
-      <button type="button" data-v="splat" aria-pressed="false">Splats</button>
-      <button type="button" data-v="compare" aria-pressed="true">Compare</button>
+    <div class="tb-right">
+      <span aria-hidden="true"></span>
+      <div class="tb-center">
+        <div class="tb-group">
+          <span class="tb-label tb-label-main" id="lbl-mode">View</span>
+          <div class="seg" id="seg-mode" role="group" aria-labelledby="lbl-mode">
+            <button type="button" data-v="view" aria-pressed="true">3D Example</button>
+            <button type="button" data-v="matrix" aria-pressed="false">Matrix</button>
+          </div>
+        </div>
+        <div class="tb-group" id="grp-scene">
+          <span class="tb-label tb-label-main" id="lbl-scene">Scene Type</span>
+          <div class="seg" id="seg-object" role="group" aria-labelledby="lbl-scene">
+            <button type="button" data-v="pineapple" aria-pressed="true">Pineapple</button>
+            <button type="button" data-v="roadside" aria-pressed="false">Roadside</button>
+          </div>
+        </div>
+      </div>
+      <div class="tb-data">
+        <button type="button" class="btn" id="open" title="Open a 3D Gaussian Splatting .ply, or drop one onto the viewer">Add Your .ply</button>
+        <input type="file" id="file" accept=".ply" hidden>
+      </div>
     </div>
-  </fieldset>
-
-  <div style="margin:0 0 16px">
-    <button type="button" class="btn" id="matrixBtn" aria-pressed="false" style="width:100%">Show comparison matrix</button>
   </div>
+  <div class="tb-sub" id="tb-sub" hidden>
+    <p class="tb-status" id="status" role="status" aria-live="polite"></p>
+    <span class="tb-group" data-loaded hidden>
+      <label class="tb-label" for="orient">Up axis</label>
+      <select id="orient">
+        <option value="zup">Z up</option>
+        <option value="yup">Y up</option>
+        <option value="ydown">Y down (COLMAP)</option>
+      </select>
+    </span>
+    <button type="button" class="btn" id="demo" hidden>Back to demo scene</button>
+  </div>
+</header>
 
+<aside class="rail">
   <p class="about" id="about"></p>
 
   <section class="card" data-for="points">
@@ -175,10 +235,6 @@
       <input type="range" id="pointSize" min="1" max="8" step="0.5" value="1.5">
     </div>
     <label class="check"><input type="checkbox" id="autoPoint" checked> Shrink points as density rises</label>
-    <div class="row" id="gaps-row">
-      <label for="gaps">Capture gaps</label><output id="gaps-out"></output>
-      <input type="range" id="gaps" min="0" max="100" step="5" value="60">
-    </div>
   </section>
 
   <section class="card" data-for="mesh">
@@ -218,6 +274,10 @@
       <label for="noise">Capture noise</label><output id="noise-out"></output>
       <input type="range" id="noise" min="0" max="100" step="1" value="0">
     </div>
+    <div class="row" id="gaps-row">
+      <label for="gaps">Capture gaps</label><output id="gaps-out"></output>
+      <input type="range" id="gaps" min="0" max="100" step="5" value="60">
+    </div>
   </section>
 
   <section class="card" id="other-card">
@@ -230,22 +290,6 @@
     <div class="btnrow">
       <button type="button" class="btn" id="reset">Reset view</button>
     </div>
-
-    <h3 class="subh">Your data</h3>
-    <div class="btnrow">
-      <button type="button" class="btn" id="open">Open .ply file</button>
-      <button type="button" class="btn" id="demo" hidden>Back to demo scene</button>
-    </div>
-    <input type="file" id="file" accept=".ply" hidden>
-    <p class="status" id="status" role="status" aria-live="polite"></p>
-    <div class="row" data-loaded hidden>
-      <label for="orient">Up axis</label><span></span>
-      <select id="orient">
-        <option value="zup">Z up</option>
-        <option value="yup">Y up</option>
-        <option value="ydown">Y down (COLMAP)</option>
-      </select>
-    </div>
   </section>
 
   <p class="foot">Demo surfaces are procedural. Points and splats are sampled from the reference surface. Real captures are measured (points) or trained from photos (splats), so expect noise, holes, and view-dependent color that this demo doesn't reproduce.</p>
@@ -255,13 +299,16 @@
   <canvas id="gl"></canvas>
   <div class="panels" id="panels"></div>
   <div class="hud"><b id="fps">--</b> fps<br>Drag to orbit, scroll to zoom, right-drag to pan</div>
-  <section class="matrix" id="matrix" hidden aria-label="Comparison matrix">
+  <section class="matrix" id="matrix" hidden data-theme="light" aria-label="Comparison matrix">
     <div class="m-head">
       <div>
         <h2>How captured data is represented</h2>
         <p>Key factors when choosing a reality modeling approach</p>
       </div>
-      <button type="button" class="btn-dark" id="matrixClose">Back to 3D view</button>
+      <div class="m-theme" role="group" aria-label="Matrix color mode">
+        <button type="button" data-t="light" aria-pressed="true"><span data-micon="sun"></span>Light</button>
+        <button type="button" data-t="dark" aria-pressed="false"><span data-micon="moon"></span>Dark</button>
+      </div>
     </div>
     <div class="legend">
       <span class="b good"><i></i>Favorable</span>
@@ -269,6 +316,7 @@
       <span class="b bad"><i></i>Limited</span>
     </div>
     <table class="mx" id="mx"></table>
+    <p class="m-note">* Splat accuracy depends on how the splat was built. A photo-trained splat is limited by the photogrammetry behind it: camera calibration, image overlap, and ground control. LiDAR raises that ceiling only if it was fused into training. Measure on the point cloud, and check any splat measurement against independent checkpoints.</p>
     <p class="m-take">Points measure. Meshes design. Splats show. Imagery documents.</p>
     <p class="m-foot">These are judgment calls, not benchmarks. Imagery accuracy depends on camera calibration and range. "Emerging" for splats reflects glTF and 3D Tiles support that was still at release candidate in the sources checked. Imagery has no 3D scene in this app, so it appears only here.</p>
   </section>
@@ -1148,7 +1196,8 @@
     clock:    '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
     tag:      '<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.3"/>',
     globe:    '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>',
-    flag:     '<path d="M5 21V4"/><path d="M5 4h12l-2.5 4L17 12H5"/>'
+    flag:     '<path d="M5 21V4"/><path d="M5 4h12l-2.5 4L17 12H5"/>',
+    moon:     '<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 7 7 0 1 0 20 14.5z"/>'
   };
 
   // Each note: [icon, text]
@@ -1242,8 +1291,8 @@
     $('density-row').hidden = !(active.includes('points') || active.includes('splat') || (S.linkMesh && !loaded && active.includes('mesh')));
     $('linkMesh').closest('label').hidden = !!loaded || !active.includes('mesh');
     $('gaps-row').hidden = !!loaded || !active.includes('points');
-    $('capture-card').hidden = $('density-row').hidden && $('noise-row').hidden;
-    document.querySelector('#seg-view [data-v="mesh"]').disabled = !!loaded;
+    $('capture-card').hidden = $('density-row').hidden && $('noise-row').hidden && $('gaps-row').hidden;
+    updateSub();
     $('about').textContent = ABOUT[S.view];
   }
 
@@ -1271,17 +1320,17 @@
     $('splatSize-out').textContent = S.splatSize.toFixed(2) + 'x';
   }
 
-  function setView(v){
-    S.view=v;
-    if (loaded && v==='mesh') v='compare';
-    S.view=v; setPressed('seg-view', v);
-    active = v==='compare' ? (loaded ? ['points','splat'] : ['points','mesh','splat']) : [v];
+  function updateSub(){ $('tb-sub').hidden = !(loaded || $('status').textContent); }
+
+  function setView(){
+    S.view='compare';
+    active = loaded ? ['points','splat'] : ['points','mesh','splat'];
     buildPanels(); applyVisibility(); updateStats();
     resetCamera();
   }
 
   bindSeg('seg-object', v=>loadObject(v));
-  bindSeg('seg-view', setView);
+  bindSeg('seg-mode', v=>setMatrix(v==='matrix'));
 
   let meshTimer=null;
   let roughTimer=null;
@@ -1326,7 +1375,7 @@
   /* ------------------------------------------------------------------ */
   /* Loader: 3D Gaussian Splatting .ply                                  */
   /* ------------------------------------------------------------------ */
-  const DEFAULT_STATUS = 'Open or drop a 3D Gaussian Splatting .ply to view your own capture.';
+  const DEFAULT_STATUS = '';
 
   function parsePlyHeader(text){
     const endTag='end_header\n', ei=text.indexOf(endTag);
@@ -1584,7 +1633,7 @@
     ['Measurement accuracy', [
       ['good','Strong','Direct sensor measurements'],
       ['mid','Moderate','Derived from points, smooths detail'],
-      ['bad','Weak','Built for viewing, not measuring'],
+      ['bad','Weak','Built for viewing, not measuring *'],
       ['mid','Moderate','Measurable when calibrated, drops with distance']]],
     ['Visual realism', [
       ['bad','Weak','Colored dots'],
@@ -1660,19 +1709,21 @@
 
   function setMatrix(open){
     matrixOpen = open;
+    $('grp-scene').hidden = open;
     $('matrix').hidden = !open;
     stage.classList.toggle('matrix-open', open);
-    const b = $('matrixBtn');
-    b.setAttribute('aria-pressed', open ? 'true' : 'false');
-    b.textContent = open ? 'Back to 3D view' : 'Show comparison matrix';
-    if (open) $('matrixClose').focus();
-    else if ($('matrix').contains(document.activeElement)) b.focus();
+    setPressed('seg-mode', open ? 'matrix' : 'view');
+    if (!open && $('matrix').contains(document.activeElement)) document.querySelector('#seg-mode [data-v="view"]').focus();
   }
 
   renderMatrix();
+  document.querySelectorAll('[data-micon]').forEach(el=>{ el.outerHTML = svgIcon(el.dataset.micon); });
+  function setMatrixTheme(t){
+    $('matrix').setAttribute('data-theme', t);
+    document.querySelectorAll('.m-theme button').forEach(b=>b.setAttribute('aria-pressed', String(b.dataset.t===t)));
+  }
+  document.querySelectorAll('.m-theme button').forEach(b=>b.addEventListener('click', ()=>setMatrixTheme(b.dataset.t)));
   document.querySelectorAll('.card > h2[data-icon]').forEach(h=>h.insertAdjacentHTML('afterbegin', svgIcon(h.dataset.icon)));
-  $('matrixBtn').addEventListener('click', ()=>setMatrix(!matrixOpen));
-  $('matrixClose').addEventListener('click', ()=>setMatrix(false));
   document.addEventListener('keydown', e=>{ if (e.key==='Escape' && matrixOpen) setMatrix(false); });
 
   function resize(){
@@ -1737,6 +1788,7 @@
   /* ------------------------------------------------------------------ */
   resize();
   $('status').textContent = DEFAULT_STATUS;
+  new MutationObserver(()=>{ $('status').title = $('status').textContent; updateSub(); }).observe($('status'),{childList:true,characterData:true,subtree:true});
   $('meshDetail').disabled = S.linkMesh;
   syncMeshDetail(false);
   buildPanels();

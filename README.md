@@ -4,6 +4,8 @@ An interactive, single-file viewer that renders the same surface as a **point cl
 
 It was built to explain reality modeling tradeoffs to transportation and GIS audiences: what each representation is good at, where it falls short, and how density, noise, and gaps change what you see.
 
+<!-- Add a screenshot or short GIF here, for example: ![Switching between the 3D view and the matrix](docs/demo.gif) -->
+
 ## Quick start
 
 1. Download `reality-capture-view-sandbox.html`.
@@ -18,11 +20,12 @@ Requirements:
 
 ### Views
 
-| View | What it shows |
+The **View** toggle in the title bar switches between two screens:
+
+| Screen | What it shows |
 |---|---|
-| **Compare** (default) | Point cloud, mesh, and Gaussian splat in three columns, sharing one camera |
-| **Points / Mesh / Splats** | One approach full width |
-| **Comparison matrix** | A table of 12 factors across imagery, point cloud, mesh, and splat |
+| **3D Example** (default) | Point cloud, mesh, and Gaussian splat side by side in three columns, sharing one camera |
+| **Matrix** | A table of 12 factors across imagery, point cloud, mesh, and splat. It opens in light mode, with a Light/Dark toggle at the top right |
 
 Each column has **Strengths** and **Weaknesses** toggles that open short notes with icons. The matrix covers measurement accuracy, visual realism, free-viewpoint navigation, thin features, gaps, file size, streaming, rendering demand, production effort, editing, GIS/CAD support, and typical use.
 
@@ -35,13 +38,18 @@ Both are generated in code. Points and splats are sampled from the reference sur
 
 ### Controls
 
-The left panel is organized into cards. Each card appears only when it applies to the visible views.
+The **title bar** across the top holds the controls that apply to the whole app:
+
+- **View:** switches between the 3D Example and the Matrix
+- **Scene Type:** Pineapple or Roadside (hidden while the Matrix is showing)
+- **Add Your .ply** (right side): opens your own splat file. Once a file is loaded, a strip under the bar shows the load status, an Up axis selector, and Back to demo scene
+
+The **left panel** is organized into cards. Each card appears only when it applies to the visible views.
 
 | Card | Control | What it does |
 |---|---|---|
 | **Point Cloud** | Point size | Dot size in pixels |
 | | Shrink points as density rises | Keeps dots distinct as density grows (never grows them) |
-| | Capture gaps | Drops whole patches of points, like missing returns on occluded or shiny surfaces |
 | **Mesh** | Link mesh detail to capture density | Ties mesh resolution to the density slider (on by default) |
 | | Mesh detail | Mesh resolution when unlinked |
 | | Mesh display | Textured, textured with edges, clay, or wireframe |
@@ -49,9 +57,9 @@ The left panel is organized into cards. Each card appears only when it applies t
 | | Show splat outlines | Draws the 1-sigma ellipse of each splat |
 | **Capture Details** | Capture density | Number of samples, up to 100,000 in the demo scenes |
 | | Capture noise | Jitters points and splats to mimic sensor noise |
+| | Capture gaps | Point cloud only. Drops whole patches of points, like missing returns on occluded or shiny surfaces |
 | **Other Options** | Leaf roughness | Pineapple only. Makes thin leaves sparse, ragged, and blobby |
 | | Camera auto-rotate, Reset view | Camera helpers |
-| | Open .ply file | Load your own splat file (see below) |
 
 Mouse and keyboard:
 
@@ -61,7 +69,7 @@ Mouse and keyboard:
 
 ## Opening your own data
 
-Use **Other Options → Open .ply file**, or drop a file onto the viewer.
+Use **Add Your .ply** in the title bar, or drop a file onto the viewer.
 
 Supported:
 
@@ -70,7 +78,7 @@ Supported:
 
 What the loader does:
 
-- Shows the file as a splat render next to a point cloud made from the same splat centers and colors. The mesh column is disabled because splat files have no faces.
+- Shows the file as a splat render next to a point cloud made from the same splat centers and colors. The mesh column is left out because splat files have no faces.
 - Shuffles the splats on load so the density slider shows an even random subset instead of cropping the scene. The default is 30% of the splats.
 - Recenters the data, normalizes quaternions, and decodes the standard 3DGS encodings (log scale, logit opacity, spherical-harmonic base color).
 - Picks an up axis from the smallest extent (usually Z for aerial captures). Use the **Up axis** selector if it's wrong.
